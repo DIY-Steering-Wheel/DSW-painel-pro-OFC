@@ -391,7 +391,7 @@ function renderConfigInputs() {
     ...rule,
     game_ids: [...(rule.game_ids || [])],
   }));
-  equalizationSelectedGameIds = state.games.filter((game) => game.selected).map((game) => game.id);
+  equalizationSelectedGameIds = [];
   ui.pluginGithubUrl.value = state.plugin_manager.github_repo_url || "";
 
   ui.webServerHost.value = state.web_server.http_host || "0.0.0.0";
@@ -405,6 +405,7 @@ function renderConfigInputs() {
   renderFallbackEditor();
   renderFallbackList();
   renderEqualizationEditor();
+  clearEqualizationForm();
   renderEqualizationList();
   renderSelectedGameUnitHint();
   setSettingsTab(activeSettingsTab);
@@ -894,6 +895,11 @@ function bindExternalLinks(root) {
 function renderEqualizationEditor() {
   const selectedField = ui.equalizationField.value;
   ui.equalizationField.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Selecione uma variavel...";
+  placeholder.selected = !selectedField;
+  ui.equalizationField.appendChild(placeholder);
   state.panel_fields.forEach((field) => {
     const option = document.createElement("option");
     option.value = field.key;
@@ -901,9 +907,6 @@ function renderEqualizationEditor() {
     option.selected = field.key === selectedField;
     ui.equalizationField.appendChild(option);
   });
-  if (!ui.equalizationField.value && state.panel_fields.length) {
-    ui.equalizationField.value = state.panel_fields[0].key;
-  }
   renderEqualizationGameSelector();
 }
 
@@ -1128,6 +1131,9 @@ function coerceFallbackValue(defaultValue, rawValue) {
 }
 
 function addOrUpdateEqualizationRule() {
+  if (!ui.equalizationField.value) {
+    return;
+  }
   const sourceMin = Number(ui.equalizationSourceMin.value);
   const sourceMax = Number(ui.equalizationSourceMax.value);
   const targetMin = Number(ui.equalizationTargetMin.value);
@@ -1165,14 +1171,13 @@ function addOrUpdateEqualizationRule() {
 }
 
 function clearEqualizationForm(resetApplyToAll = true) {
+  ui.equalizationField.value = "";
   ui.equalizationSourceMin.value = "";
   ui.equalizationSourceMax.value = "";
   ui.equalizationTargetMin.value = "";
   ui.equalizationTargetMax.value = "";
-  equalizationSelectedGameIds = state.games.filter((game) => game.selected).map((game) => game.id);
-  if (resetApplyToAll) {
-    ui.equalizationApplyToAll.checked = true;
-  }
+  equalizationSelectedGameIds = [];
+  ui.equalizationApplyToAll.checked = false;
   renderEqualizationGameSelector();
 }
 

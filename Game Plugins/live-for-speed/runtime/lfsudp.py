@@ -13,6 +13,12 @@ carData = {}
 _gauge_data = {}
 _motion_data = {"x": 0.0, "y": 0.0, "z": 0.0}
 
+OUTGAUGE_BASE_FORMAT = "<I4sHBB7fIIfff16s16s"
+OUTGAUGE_WITH_ID_FORMAT = "<I4sHBB7fIIfff16s16si"
+OUTSIM_LEGACY_FORMAT = "I12f3i"
+OUTSIM2_MAIN_FORMAT = "12f3i"
+OUTSIM2_PREFIX_FORMAT = "4sii"
+
 
 def decodeFlag(flag):
     flagBin = bin(flag)[2:].zfill(32)
@@ -67,7 +73,8 @@ def _recv_latest(sock, size):
 def _build_socket(ip, port):
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
     try:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
     except OSError:
         pass
     sock.bind((ip, port))
@@ -103,40 +110,15 @@ def readData():
 
     gauge_packet = _recv_latest(UDPServerSocket, bufferSize)
     if gauge_packet:
-        unpackedData = struct.unpack("I3sxH2B7f2I3f15sx15sx", gauge_packet)
-        gear = unpackedData[3]
-        gear = gear - 1 if gear >= 2 else (0 if gear == 1 else gear - 1)
-        _gauge_data = {
-            "time": unpackedData[0],
-            "carName": unpackedData[1].decode("utf-8", errors="ignore"),
-            "flags": decodeFlag(unpackedData[2]),
-            "gear": gear,
-            "PLID": unpackedData[4],
-            "speed": unpackedData[5],
-            "rpm": unpackedData[6],
-            "turboPressure": unpackedData[7],
-            "engTemp": unpackedData[8],
-            "fuel": unpackedData[9] * 100,
-            "oilPressure": unpackedData[10],
-            "oilTemp": unpackedData[11],
-            "bico_de_luz": decodeLights(unpackedData[12], unpackedData[13]),
-            "throttle": unpackedData[14],
-            "brake": unpackedData[15],
-            "clutch": unpackedData[16],
-            "misc1": unpackedData[17],
-            "misc2": unpackedData[18],
-            "ElectricEnabled": unpackedData[8] > 1,
-            "EngineEnabled": unpackedData[6] > 100,
-        }
+        parsed_gauge = _parse_outgauge_packet(gauge_packet)
+        if parsed_gauge is not None:
+            _gauge_data = parsed_gauge
 
     motion_packet = _recv_latest(UDPServerSocketM, bufferSize)
-    if motion_packet and len(motion_packet) >= 64:
-        outsim_pack = struct.unpack("I12f3i", motion_packet[:64])
-        _motion_data = {
-            "x": outsim_pack[7],
-            "y": outsim_pack[8],
-            "z": outsim_pack[9],
-        }
+    if motion_packet:
+        parsed_motion = _parse_outsim_packet(motion_packet)
+        if parsed_motion is not None:
+            _motion_data = parsed_motion
 
     if _gauge_data:
         carData = dict(_gauge_data)
@@ -154,3 +136,58 @@ def iniciada(ip="127.0.0.1", port=4444):
         shutdown()
     localIP = ip
     localPort = port
+
+
+def _parse_outsim_packet(packet):
+    if len(packet) >= struct.calcsize(OUTSIM2_PREFIX_FORMAT) + struct.calcsize(OUTSIM2_MAIN_FORMAT) and packet[:4] == b"LFST":
+        prefix_size = struct.calcsize(OUTSIM2_PREFIX_FORMAT)
+        main_values = struct.unpack(OUTSIM2_MAIN_FORMAT, packet[prefix_size:prefix_size + struct.calcsize(OUTSIM2_MAIN_FORMAT)])
+        return {
+            "x": main_values[6],
+            "y": main_values[7],
+            "z": main_values[8],
+        }
+
+    if len(packet) >= struct.calcsize(OUTSIM_LEGACY_FORMAT):
+        outsim_pack = struct.unpack(OUTSIM_LEGACY_FORMAT, packet[:struct.calcsize(OUTSIM_LEGACY_FORMAT)])
+        return {
+            "x": outsim_pack[7],
+            "y": outsim_pack[8],
+            "z": outsim_pack[9],
+        }
+
+    return None
+
+
+def _parse_outgauge_packet(packet):
+    if len(packet) >= struct.calcsize(OUTGAUGE_WITH_ID_FORMAT):
+        unpacked = struct.unpack(OUTGAUGE_WITH_ID_FORMAT, packet[:struct.calcsize(OUTGAUGE_WITH_ID_FORMAT)])
+    elif len(packet) >= struct.calcsize(OUTGAUGE_BASE_FORMAT):
+        unpacked = struct.unpack(OUTGAUGE_BASE_FORMAT, packet[:struct.calcsize(OUTGAUGE_BASE_FORMAT)])
+    else:
+        return None
+
+    gear = unpacked[3]
+    gear = gear - 1 if gear >= 2 else (0 if gear == 1 else gear - 1)
+    return {
+        "time": unpacked[0],
+        "carName": unpacked[1].decode("utf-8", errors="ignore").rstrip("\x00"),
+        "flags": decodeFlag(unpacked[2]),
+        "gear": gear,
+        "PLID": unpacked[4],
+        "speed": unpacked[5],
+        "rpm": unpacked[6],
+        "turboPressure": unpacked[7],
+        "engTemp": unpacked[8],
+        "fuel": unpacked[9] * 100,
+        "oilPressure": unpacked[10],
+        "oilTemp": unpacked[11],
+        "bico_de_luz": decodeLights(unpacked[12], unpacked[13]),
+        "throttle": unpacked[14],
+        "brake": unpacked[15],
+        "clutch": unpacked[16],
+        "misc1": unpacked[17],
+        "misc2": unpacked[18],
+        "ElectricEnabled": unpacked[8] > 1,
+        "EngineEnabled": unpacked[6] > 100,
+    }

@@ -18,7 +18,7 @@ def install(folder, plugin_dir: Path):
     config_path = Path(folder) / "cfg.txt"
     defaults = {
         "OutSim Mode": "1",
-        "OutSim Delay": "10",
+        "OutSim Delay": "1",
         "OutSim IP": "127.0.0.1",
         "OutSim Port": "46542",
         "OutSim ID": "0",
