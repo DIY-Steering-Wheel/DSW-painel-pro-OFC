@@ -53,3 +53,9 @@ def collect(settings: dict) -> dict:
         "acceleration_y": data.get("y", 0),
         "acceleration_z": data.get("z", 0),
     }
+
+
+def shutdown() -> None:
+    module = _runtime_module
+    if module is not None and hasattr(module, "shutdown"):
+        module.shutdown()

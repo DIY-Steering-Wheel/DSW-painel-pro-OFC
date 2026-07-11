@@ -48,6 +48,7 @@ class TelemetryBridge:
 
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        self._collector_module = None
         self._stop_event = threading.Event()
         self._selected_game = self.store.load_selected_game(self.plugins[0]["name"])
         self._installed_games = self.store.load_games(list(self._plugin_by_name))
@@ -535,12 +536,19 @@ class TelemetryBridge:
 
     def stop_collection(self, wait: bool = False) -> None:
         thread = self._thread
+        collector_module = self._collector_module
         with self._lock:
             self._is_collecting = False
             self._status_text = "Parado"
         self._stop_event.set()
         if wait and thread is not None and thread.is_alive() and thread is not threading.current_thread():
             thread.join(timeout=1.0)
+        if collector_module is not None and hasattr(collector_module, "shutdown"):
+            try:
+                collector_module.shutdown()
+            except Exception:
+                pass
+        self._collector_module = None
 
     def is_game_active(self, game_name: str) -> bool:
         executable_name = self.plugin_meta(game_name).get("process_name")
@@ -574,6 +582,7 @@ class TelemetryBridge:
             self._set_error("Jogo não suportado.")
             self.stop_collection()
             return
+        self._collector_module = collector_module
         try:
             while not self._stop_event.is_set():
                 try:

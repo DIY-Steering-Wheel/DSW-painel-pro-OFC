@@ -6,13 +6,8 @@ localIP = "127.0.0.1"
 localPort = 46541
 bufferSize = 256
 
-UDPServerSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-UDPServerSocket.bind((localIP, localPort))
-UDPServerSocket.setblocking(False)
-
-UDPServerSocketM = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-UDPServerSocketM.bind((localIP, 46542))
-UDPServerSocketM.setblocking(False)
+UDPServerSocket = None
+UDPServerSocketM = None
 
 carData = {}
 _gauge_data = {}
@@ -60,8 +55,42 @@ def _recv_latest(sock, size):
     return latest
 
 
+def _build_socket(ip, port):
+    sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    except OSError:
+        pass
+    sock.bind((ip, port))
+    sock.setblocking(False)
+    return sock
+
+
+def _ensure_sockets():
+    global UDPServerSocket, UDPServerSocketM
+
+    if UDPServerSocket is None:
+        UDPServerSocket = _build_socket(localIP, localPort)
+    if UDPServerSocketM is None:
+        UDPServerSocketM = _build_socket(localIP, 46542)
+
+
+def shutdown():
+    global UDPServerSocket, UDPServerSocketM
+
+    for name in ("UDPServerSocket", "UDPServerSocketM"):
+        sock = globals().get(name)
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+            globals()[name] = None
+
+
 def readData():
     global carData, _gauge_data, _motion_data
+    _ensure_sockets()
 
     gauge_packet = _recv_latest(UDPServerSocket, bufferSize)
     if gauge_packet:
@@ -112,5 +141,7 @@ def get():
 
 def iniciada(ip="127.0.0.1", port=4444):
     global localIP, localPort
+    if ip != localIP or port != localPort:
+        shutdown()
     localIP = ip
     localPort = port
