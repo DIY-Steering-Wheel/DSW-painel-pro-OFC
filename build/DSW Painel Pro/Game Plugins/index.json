@@ -1,0 +1,9 @@
+{
+  "plugins": [
+    { "folder": "assetto-corsa", "built_in": true },
+    { "folder": "euro-truck-simulator-2", "built_in": true },
+    { "folder": "american-truck-simulator", "built_in": true },
+    { "folder": "beamng-drive", "built_in": true },
+    { "folder": "live-for-speed", "built_in": true }
+  ]
+}

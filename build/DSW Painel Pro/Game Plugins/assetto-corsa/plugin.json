@@ -1,0 +1,49 @@
+{
+  "id": "assetto-corsa",
+  "name": "assetto corsa",
+  "icon": "icon.png",
+  "requires_install": false,
+  "process_name": "AssettoCorsa.exe",
+  "telemetry_script": "telemetry.py",
+  "installer_script": "installer.py",
+  "emitted_fields": [
+    "engine_rpm",
+    "current_gear",
+    "speed",
+    "fuel_percent",
+    "water_temperature",
+    "turbo",
+    "abs",
+    "acceleration_x",
+    "acceleration_y",
+    "acceleration_z"
+  ],
+  "emitted_units": {
+    "speed": "KM/H",
+    "pressure": "BAR",
+    "temperature": "Celsius"
+  },
+  "preferred_units": {
+    "speed": "KM/H",
+    "pressure": "BAR",
+    "temperature": "Celsius"
+  },
+  "installer": {
+    "method": "tutorial_only",
+    "title": "Integracao Assetto Corsa",
+    "description": "Assetto Corsa nao precisa selecionar pasta nem copiar arquivos neste plugin.",
+    "success_message": "Assetto Corsa nao precisa de instalacao."
+  },
+  "setup_tutorial": {
+    "title": "Uso no Assetto Corsa",
+    "summary": "Este plugin nao precisa selecionar pasta nem copiar arquivos no jogo.",
+    "steps": [
+      "Abra o Assetto Corsa.",
+      "Entre em uma pista ou corrida.",
+      "Volte ao DSW e inicie a coleta."
+    ],
+    "notes": [
+      "Se o jogo ja estava aberto antes do DSW, reiniciar a sessao pode ajudar."
+    ]
+  }
+}

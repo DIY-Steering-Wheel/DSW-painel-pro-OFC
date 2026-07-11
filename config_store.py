@@ -14,7 +14,7 @@ except ImportError:  # pragma: no cover
 class ConfigStore:
     def __init__(self) -> None:
         appdata = Path(os.getenv("APPDATA", "."))
-        self.base_dir = appdata / "DSW Painel Open Source"
+        self.base_dir = appdata / "DSW Painel Pro"
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.panel_path = self.base_dir / "panel_config.json"
         self.motion_path = self.base_dir / "motion_config.json"
@@ -22,6 +22,13 @@ class ConfigStore:
         self.selection_path = self.base_dir / "selected_game.json"
         self.settings_path = self.base_dir / "settings.json"
         self.web_bundle_dir = self.base_dir / "web_bundle"
+
+        self.legacy_open_source_dir = appdata / "DSW Painel Open Source"
+        self.legacy_open_source_panel_path = self.legacy_open_source_dir / "panel_config.json"
+        self.legacy_open_source_motion_path = self.legacy_open_source_dir / "motion_config.json"
+        self.legacy_open_source_games_path = self.legacy_open_source_dir / "games_installation.json"
+        self.legacy_open_source_selection_path = self.legacy_open_source_dir / "selected_game.json"
+        self.legacy_open_source_settings_path = self.legacy_open_source_dir / "settings.json"
 
         self.legacy_dir = appdata / "DSW PAINEL PRO VARS"
         self.legacy_panel_path = self.legacy_dir / "config.json"
@@ -32,6 +39,9 @@ class ConfigStore:
     def load_panel_config(self) -> dict[str, Any]:
         if self.panel_path.exists():
             data = self._read_json(self.panel_path)
+        elif self.legacy_open_source_panel_path.exists():
+            data = self._read_json(self.legacy_open_source_panel_path)
+            self.save_panel_config(data)
         elif self.legacy_panel_path.exists():
             legacy = self._read_json(self.legacy_panel_path)
             data = {
@@ -78,6 +88,9 @@ class ConfigStore:
         }
         if self.motion_path.exists():
             data = self._read_json(self.motion_path)
+        elif self.legacy_open_source_motion_path.exists():
+            data = self._read_json(self.legacy_open_source_motion_path)
+            self.save_motion_config(data)
         elif self.legacy_motion_path.exists():
             data = self._read_json(self.legacy_motion_path)
             self.save_motion_config(data)
@@ -115,6 +128,9 @@ class ConfigStore:
     def load_games(self, game_names: list[str]) -> dict[str, str]:
         if self.games_path.exists():
             data = self._read_json(self.games_path)
+        elif self.legacy_open_source_games_path.exists():
+            data = self._read_json(self.legacy_open_source_games_path)
+            self._write_json(self.games_path, data)
         elif self.legacy_games_path.exists():
             data = self._read_json(self.legacy_games_path)
             self._write_json(self.games_path, data)
@@ -132,6 +148,10 @@ class ConfigStore:
     def load_selected_game(self, default_name: str) -> str:
         if self.selection_path.exists():
             return self._read_json(self.selection_path).get("selected_game", default_name)
+        if self.legacy_open_source_selection_path.exists():
+            selected = self._read_json(self.legacy_open_source_selection_path).get("selected_game", default_name)
+            self.save_selected_game(selected)
+            return selected
         if self.legacy_selection_path.exists():
             selected = self._read_json(self.legacy_selection_path).get("selected_game", default_name)
             self.save_selected_game(selected)
@@ -166,6 +186,10 @@ class ConfigStore:
         if self.settings_path.exists():
             data = self._read_json(self.settings_path)
             default.update(data)
+        elif self.legacy_open_source_settings_path.exists():
+            data = self._read_json(self.legacy_open_source_settings_path)
+            default.update(data)
+            self._write_json(self.settings_path, default)
         else:
             self._write_json(self.settings_path, default)
         if not isinstance(default.get("fallback_overrides"), dict):

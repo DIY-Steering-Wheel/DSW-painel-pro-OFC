@@ -22,15 +22,17 @@ except Exception:  # pragma: no cover
 
 try:
     from .config_store import ConfigStore
+    from .runtime_paths import get_app_base_dir
 except ImportError:  # pragma: no cover
     from config_store import ConfigStore
+    from runtime_paths import get_app_base_dir
 
 
 class WebRuntimeService:
     def __init__(self, store: ConfigStore, payload_provider: Callable[[], dict[str, Any]]) -> None:
         self.store = store
         self.payload_provider = payload_provider
-        self.base_dir = Path(__file__).resolve().parent
+        self.base_dir = get_app_base_dir()
         self.templates_dir = self.base_dir / "web" / "templates"
         self._http_server: ThreadingHTTPServer | None = None
         self._http_thread: threading.Thread | None = None
@@ -286,7 +288,7 @@ class WebRuntimeService:
         payload = self.payload_provider()
 
         if path == "/api/health":
-            self._json(handler, {"ok": True, "service": "dsw-painel-open", "time": time.time()})
+            self._json(handler, {"ok": True, "service": "dsw-painel-pro", "time": time.time()})
             return
         if path == "/api/state":
             self._json(handler, payload)
@@ -488,7 +490,7 @@ class WebRuntimeService:
     def _capabilities_payload(self) -> dict[str, Any]:
         return {
             "ok": True,
-            "service": "dsw-painel-open",
+            "service": "dsw-painel-pro",
             "http_endpoints": self._api_endpoints(),
             "udp_response": {
                 "format": "json",
@@ -514,7 +516,7 @@ class WebRuntimeService:
         return {
             "ok": True,
             "meta": {
-                "service": "dsw-painel-open",
+                "service": "dsw-painel-pro",
                 "generated_at": time.time(),
                 "api_version": 1,
             },
@@ -527,7 +529,7 @@ class WebRuntimeService:
         return {
             "ok": True,
             "meta": {
-                "service": "dsw-painel-open",
+                "service": "dsw-painel-pro",
                 "generated_at": time.time(),
                 "transport": "udp",
             },
@@ -563,7 +565,7 @@ class WebRuntimeService:
                     "id": "simple-dashboard",
                     "name": "Simple Dashboard",
                     "description": "Template padrão com telemetria ao vivo, status do jogo e valores principais.",
-                    "author": "DSW Painel Open",
+                    "author": "DSW Painel Pro",
                     "version": "1.0.0",
                     "entry_html": "index.html",
                     "supports_mobile": True,
@@ -587,7 +589,7 @@ class WebRuntimeService:
   <main class="dashboard">
     <section class="hero">
       <div>
-        <p class="eyebrow">DSW Painel Open</p>
+        <p class="eyebrow">DSW Painel Pro</p>
         <h1 id="gameName">Aguardando jogo</h1>
         <p id="gameState">Sem coleta ativa</p>
       </div>

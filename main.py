@@ -8,35 +8,68 @@ import webview
 
 try:
     from .app_api import NewAppApi
+    from .runtime_paths import get_app_base_dir
 except ImportError:  # pragma: no cover
     from app_api import NewAppApi
+    from runtime_paths import get_app_base_dir
 
+
+APP_TITLE = "DSW Painel Pro - Valdemir"
 
 
 def run() -> None:
     api = NewAppApi()
-    base_dir = Path(__file__).resolve().parent
-    webview.create_window(
-        "DSW Painel Open - Nova Versao",
+    base_dir = get_app_base_dir()
+    window = webview.create_window(
+        APP_TITLE,
         url=(base_dir / "frontend" / "index.html").as_uri(),
         js_api=api,
         width=800,
         height=484,
         min_size=(1200, 540),
         resizable=False,
+        background_color="#111111",
     )
-    webview.start(_apply_windows_dark_titlebar, debug=False)
+    webview.start(_apply_windows_dark_titlebar, args=(window,), debug=False)
 
 
-def _apply_windows_dark_titlebar() -> None:
-    time.sleep(0.25)
+def _apply_windows_dark_titlebar(window: webview.Window) -> None:
     try:
-        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        user32 = ctypes.windll.user32
+        dwmapi = ctypes.windll.dwmapi
+        window.events.shown.wait(15)
+        hwnd = None
+        for _ in range(40):
+            try:
+                from webview.platforms import winforms
+
+                form = winforms.BrowserView.instances.get(window.uid)
+                if form is not None:
+                    hwnd = int(form.Handle.ToInt32())
+            except Exception:
+                hwnd = None
+
+            if not hwnd:
+                hwnd = user32.FindWindowW(None, APP_TITLE) or user32.GetForegroundWindow()
+            if hwnd:
+                break
+            time.sleep(0.15)
         if not hwnd:
             return
-        value = ctypes.c_int(1)
+
+        immersive_dark = ctypes.c_int(1)
+        caption_color = ctypes.c_uint(0x1E1E1E)
+        text_color = ctypes.c_uint(0xFFFFFF)
+
         for attribute in (20, 19):
-            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            dwmapi.DwmSetWindowAttribute(
+                hwnd,
+                ctypes.c_uint(attribute),
+                ctypes.byref(immersive_dark),
+                ctypes.sizeof(immersive_dark),
+            )
+        for attribute, value in ((35, caption_color), (36, text_color)):
+            dwmapi.DwmSetWindowAttribute(
                 hwnd,
                 ctypes.c_uint(attribute),
                 ctypes.byref(value),

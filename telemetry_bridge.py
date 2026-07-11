@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import time
+import webbrowser
 from collections import deque
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ try:
     from .constants import PANEL_FIELDS
     from .installers import InstallerService
     from .plugin_registry import PluginRegistry
+    from .runtime_paths import get_app_base_dir
     from .serial_services import MotionSender, PanelSender, build_telemetry_rows
     from .web_runtime import WebRuntimeService
 except ImportError:  # pragma: no cover
@@ -22,13 +24,14 @@ except ImportError:  # pragma: no cover
     from constants import PANEL_FIELDS
     from installers import InstallerService
     from plugin_registry import PluginRegistry
+    from runtime_paths import get_app_base_dir
     from serial_services import MotionSender, PanelSender, build_telemetry_rows
     from web_runtime import WebRuntimeService
 
 
 class TelemetryBridge:
     def __init__(self) -> None:
-        self.base_dir = Path(__file__).resolve().parent
+        self.base_dir = get_app_base_dir()
         self.store = ConfigStore()
         self.registry = PluginRegistry(self.base_dir)
         self.panel_sender = PanelSender(self.store)
@@ -135,11 +138,11 @@ class TelemetryBridge:
                 "selected_package": template_package_path,
             },
             "about_info": {
-                "owner_name": "DSW Simuladores",
+                "owner_name": "Valdemir",
                 "owner_team": "equipe DSW de Simuladores",
                 "discord_url": "#",
                 "discord_label": "Discord oficial da DSW",
-                "project_status": "Projeto open source mantido pela DSW",
+                "project_status": "Projeto mantido por Valdemir e pela DSW",
                 "pix_key": "ece64ef9-cee3-4c39-8631-bdac226c7563",
                 "donation_message": "Se quiser apoiar o desenvolvimento do projeto, voce pode usar este QR Code Pix para doacao.",
                 "template_html": self._about_template_html,
@@ -274,6 +277,12 @@ class TelemetryBridge:
     def save_motion_config(self, data: dict[str, Any]) -> dict[str, Any]:
         self.store.save_motion_config(data)
         return self.snapshot()
+
+    def open_external_url(self, url: str) -> bool:
+        try:
+            return bool(webbrowser.open(url))
+        except Exception:
+            return False
 
     def set_install_folder(self, folder: str) -> dict[str, Any]:
         with self._lock:
@@ -514,12 +523,17 @@ class TelemetryBridge:
     def _apply_windows_startup(self, enabled: bool) -> None:
         startup_dir = Path(os.getenv("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
         startup_dir.mkdir(parents=True, exist_ok=True)
-        launcher = startup_dir / "DSW Painel Open Source.cmd"
+        launcher = startup_dir / "DSW Painel Pro.cmd"
+        old_launcher = startup_dir / "DSW Painel Open Source.cmd"
         if enabled:
             command = f'"{sys.executable}" "{Path.cwd() / "main.py"}"'
             launcher.write_text(f"@echo off\nstart \"\" {command}\n", encoding="utf-8")
+            if old_launcher.exists() and old_launcher != launcher:
+                old_launcher.unlink()
         elif launcher.exists():
             launcher.unlink()
+        if not enabled and old_launcher.exists():
+            old_launcher.unlink()
 
     def _reload_plugins(self) -> None:
         self.plugins = self.registry.refresh()

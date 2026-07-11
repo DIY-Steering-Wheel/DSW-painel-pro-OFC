@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse
 
 import webview
 
@@ -135,3 +136,9 @@ class NewAppApi:
 
     def uninstall_selected_game_modal(self) -> dict[str, Any]:
         return self.bridge.uninstall_selected_game()
+
+    def open_external_url(self, url: str) -> bool:
+        parsed = urlparse(url or "")
+        if parsed.scheme not in {"http", "https"}:
+            return False
+        return self.bridge.open_external_url(url)
