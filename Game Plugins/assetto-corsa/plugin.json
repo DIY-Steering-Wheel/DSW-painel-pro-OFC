@@ -16,7 +16,10 @@
     "abs",
     "acceleration_x",
     "acceleration_y",
-    "acceleration_z"
+    "acceleration_z",
+    "map_position_x",
+    "map_position_y",
+    "map_position_z"
   ],
   "emitted_units": {
     "speed": "KM/H",

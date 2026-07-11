@@ -320,9 +320,11 @@
               <div class="plugin-import-box card-section">
                 <label class="form-label" for="pluginPackagePath">Pacote do plugin</label>
                 <input id="pluginPackagePath" class="form-control" type="text" readonly>
+                <p id="pluginGithubSummary" class="form-help">Você pode importar um pacote local ou buscar releases direto do GitHub.</p>
                 <div class="install-actions">
                   <button id="browsePluginPackageBtn" class="btn btn-outline-light">Selecionar ISO/ZIP</button>
                   <button id="importPluginPackageBtn" class="btn btn-danger">Importar plugin</button>
+                  <button id="openGithubPluginModalBtn" class="btn btn-outline-light">Plugins via GitHub</button>
                 </div>
               </div>
               <div id="pluginList" class="plugin-list"></div>
@@ -340,11 +342,12 @@
                 </div>
                 <label class="form-label" for="templateZipPath">Arquivo ZIP</label>
                 <input id="templateZipPath" class="form-control" type="text" readonly>
+                <p id="templateZipSummary" class="form-help">Selecione um ZIP para importar um novo painel HTML.</p>
                 <div class="install-actions">
                   <button id="browseTemplateZipBtn" class="btn btn-outline-light">Selecionar ZIP</button>
                   <button id="importTemplateZipBtn" class="btn btn-danger">Importar template</button>
                 </div>
-                <p class="form-help">Voce pode importar, ativar, excluir e consultar a descricao de cada template. O template ativo sera usado pelo servidor web.</p>
+                <p class="form-help">Importe, selecione e exclua painéis HTML. O painel selecionado vira o ativo no servidor web.</p>
               </div>
               <div class="card-section integration-card">
                 <div class="motion-chart-head">
@@ -553,6 +556,48 @@
         <div class="modal-toolbar-actions dialog-actions">
           <button id="dialogCancelBtn" class="btn btn-outline-light hidden" type="button">Cancelar</button>
           <button id="dialogConfirmBtn" class="btn btn-danger" type="button">OK</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="githubPluginModal" class="modal-shell hidden">
+    <div class="modal-card modal-card-xl">
+      <div class="modal-toolbar">
+        <div class="modal-title-wrap">
+          <span class="eyebrow">Plugins</span>
+          <h2>GitHub Releases</h2>
+        </div>
+        <div class="modal-toolbar-actions">
+          <button class="btn btn-outline-light btn-sm" data-close="githubPluginModal">
+            <i class="bi bi-x-lg"></i>
+            <span>Fechar</span>
+          </button>
+        </div>
+      </div>
+      <div class="modal-body-scroll install-layout">
+        <div class="card-section integration-card">
+          <label class="form-label" for="pluginGithubUrl">Repositório do GitHub</label>
+          <input
+            id="pluginGithubUrl"
+            class="form-control"
+            type="text"
+            placeholder="https://github.com/owner/repo"
+          >
+          <div class="install-actions">
+            <button id="loadGithubReleasesBtn" class="btn btn-danger" type="button">Carregar releases</button>
+            <button id="clearGithubReleasesBtn" class="btn btn-outline-light" type="button">Limpar lista</button>
+          </div>
+          <p class="form-help">O app lista releases e binários do repositório. Se o asset for ZIP, você pode baixar, extrair ou baixar e importar direto.</p>
+        </div>
+        <div class="card-section integration-card">
+          <div class="motion-chart-head">
+            <div>
+              <span class="eyebrow">Releases</span>
+              <h3>Arquivos disponíveis</h3>
+            </div>
+          </div>
+          <div id="githubReleaseList" class="release-list"></div>
         </div>
       </div>
     </div>
