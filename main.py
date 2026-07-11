@@ -12,6 +12,7 @@ except ImportError:  # pragma: no cover
     from app_api import NewAppApi
 
 
+
 def run() -> None:
     api = NewAppApi()
     base_dir = Path(__file__).resolve().parent
