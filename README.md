@@ -1,5 +1,7 @@
 # DSW Painel Pro OFC
 
+<img width="1184" height="497" alt="image" src="https://github.com/user-attachments/assets/10e207de-0656-4c84-aa68-91873426cdb6" />
+
 Aplicativo desktop em PyWebView para leitura de telemetria de jogos, envio serial para painel e motion, e exposição do estado atual por HTTP e UDP.
 
 ## Recursos
