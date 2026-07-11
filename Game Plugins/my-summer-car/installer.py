@@ -16,7 +16,7 @@ def install(folder, plugin_dir: Path):
     mods_dir.mkdir(parents=True, exist_ok=True)
     copied = []
     for name in MOD_FILES:
-        source = plugin_dir / name
+        source = plugin_dir / "payload" / name
         if not source.exists():
             raise RuntimeError(f"Arquivo do mod nao encontrado: {source}")
         target = mods_dir / name

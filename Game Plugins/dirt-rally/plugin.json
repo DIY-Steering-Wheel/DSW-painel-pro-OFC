@@ -1,0 +1,83 @@
+{
+  "id": "dirt-rally",
+  "name": "DiRT Rally",
+  "icon": "icon.png",
+  "requires_install": false,
+  "activity_source": "telemetry",
+  "process_name": "drt.exe",
+  "process_names": [
+    "drt.exe",
+    "dirtrally.exe",
+    "dirt_rally.exe"
+  ],
+  "telemetry_script": "telemetry.py",
+  "emitted_fields": [
+    "engine_rpm",
+    "current_gear",
+    "speed",
+    "pressure",
+    "throttle",
+    "brake",
+    "clutch",
+    "steering",
+    "acceleration_x",
+    "acceleration_y",
+    "acceleration_z"
+  ],
+  "available_extra_fields": [
+    "connected",
+    "current_lap_time",
+    "last_lap_time",
+    "lap_number",
+    "race_position",
+    "race_time",
+    "distance_traveled",
+    "fuel_current",
+    "fuel_capacity",
+    "traction_control",
+    "abs",
+    "engine_max_rpm",
+    "engine_rpm_min",
+    "map_position_x",
+    "map_position_y",
+    "map_position_z",
+    "raw_gear"
+  ],
+  "emitted_units": {
+    "speed": "M/S",
+    "pressure": "PSI"
+  },
+  "preferred_units": {
+    "speed": "KM/H",
+    "pressure": "BAR",
+    "temperature": "Celsius"
+  },
+  "installer": {
+    "method": "tutorial_only",
+    "title": "Telemetria do DiRT Rally",
+    "description": "O plugin le a telemetria UDP nativa do DiRT Rally sem copiar arquivos para o jogo.",
+    "success_message": "DiRT Rally nao precisa de instalacao pelo DSW."
+  },
+  "telemetry": {
+    "protocol": "UDP",
+    "bind_ip": "0.0.0.0",
+    "port": 10001,
+    "supported_packet_sizes": [256, 264],
+    "required_extradata": 3
+  },
+  "setup_tutorial": {
+    "title": "Configuracao da telemetria do DiRT Rally",
+    "summary": "Ative o envio UDP do proprio jogo no arquivo hardware_settings_config.xml e aponte para a porta 10001 do DSW.",
+    "steps": [
+      "Abra C:\\Users\\<usuario>\\Documents\\My Games\\DiRT Rally\\hardwaresettings\\hardware_settings_config.xml.",
+      "Dentro de <motion_platform>, ative a linha UDP com enabled=\"true\", extradata=\"3\", ip=\"127.0.0.1\" e port=\"10001\".",
+      "Salve o arquivo, abra o jogo e entre em uma especial ou corrida de rallycross.",
+      "No DSW, selecione DiRT Rally e inicie a coleta."
+    ],
+    "notes": [
+      "O plugin espera os pacotes UDP do jogo na porta 10001.",
+      "Se o jogo estiver em outro PC, troque o IP para o endereco da maquina que executa o DSW.",
+      "Menus e pausas normalmente nao mandam telemetria util."
+    ]
+  }
+}

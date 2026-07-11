@@ -7,7 +7,10 @@
     { "folder": "farming-simulator-19", "built_in": true },
     { "folder": "farming-simulator-22", "built_in": true },
     { "folder": "farming-simulator-25", "built_in": true },
+    { "folder": "dirt-rally", "built_in": true },
+    { "folder": "dirt-rally-2.0", "built_in": true },
     { "folder": "forza", "built_in": true },
+    { "folder": "iracing", "built_in": true },
     { "folder": "my-summer-car", "built_in": true },
     { "folder": "live-for-speed", "built_in": true }
   ]

@@ -326,7 +326,12 @@ class MotionSender:
 
 def build_telemetry_rows(telemetry: dict[str, Any], allowed_keys: list[str] | None = None) -> list[dict[str, Any]]:
     if allowed_keys:
-        fields = [PANEL_FIELDS_BY_KEY[key] for key in allowed_keys if key in PANEL_FIELDS_BY_KEY]
-    else:
-        fields = PANEL_FIELDS
-    return [{"key": field.key, "label": field.label, "value": telemetry.get(field.key, field.default)} for field in fields]
+        rows: list[dict[str, Any]] = []
+        for key in allowed_keys:
+            field = PANEL_FIELDS_BY_KEY.get(key)
+            if field is None:
+                rows.append({"key": key, "label": key.replace("_", " ").title(), "value": telemetry.get(key, 0)})
+            else:
+                rows.append({"key": field.key, "label": field.label, "value": telemetry.get(field.key, field.default)})
+        return rows
+    return [{"key": field.key, "label": field.label, "value": telemetry.get(field.key, field.default)} for field in PANEL_FIELDS]

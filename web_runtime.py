@@ -110,7 +110,7 @@ class WebRuntimeService:
                 resolved_preview = (template_dir / preview_path).resolve()
                 if resolved_preview.exists():
                     preview_uri = resolved_preview.as_uri()
-            built_in = template_dir.name == "simple-dashboard" or template_id == "simple-dashboard"
+            built_in = template_dir.name in {"simple-dashboard", "neon-cluster"} or template_id in {"simple-dashboard", "neon-cluster"}
             items.append(
                 {
                     "id": template_id,
@@ -787,5 +787,414 @@ setInterval(loadState, 500);
 
         for name, content in files.items():
             target = template_dir / name
+            if not target.exists():
+                target.write_text(content, encoding="utf-8")
+
+        cluster_dir = self.templates_dir / "neon-cluster"
+        cluster_dir.mkdir(parents=True, exist_ok=True)
+        cluster_files: dict[str, str] = {
+            "manifest.json": json.dumps(
+                {
+                    "id": "neon-cluster",
+                    "name": "Neon Cluster",
+                    "description": "Painel digital futurista com velocidade em destaque, barras e cluster de status.",
+                    "author": "DSW Painel Pro",
+                    "version": "1.0.0",
+                    "entry_html": "index.html",
+                    "supports_mobile": True,
+                    "built_in": True,
+                    "website_label": "Template interno DSW",
+                    "website_url": "",
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+            + "\n",
+            "index.html": """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Neon Cluster</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="cluster-shell">
+    <section class="cluster-header">
+      <div>
+        <p class="eyebrow">DSW Futuristic Cluster</p>
+        <h1 id="gameName">Aguardando jogo</h1>
+        <p id="gameState">Sem coleta ativa</p>
+      </div>
+      <div id="collectChip" class="collect-chip">OFFLINE</div>
+    </section>
+
+    <section class="cluster-main">
+      <article class="speed-card">
+        <span class="mini-label">Velocidade</span>
+        <div class="speed-stack">
+          <strong id="speedValue">0</strong>
+          <span class="speed-unit">KM/H</span>
+        </div>
+        <div class="bar-track">
+          <div id="speedBar" class="bar-fill cyan"></div>
+        </div>
+      </article>
+
+      <article class="gear-card">
+        <span class="mini-label">Marcha</span>
+        <strong id="gearValue">N</strong>
+        <span id="lapValue" class="subvalue">Lap 0</span>
+      </article>
+
+      <article class="rpm-card">
+        <div class="metric-head">
+          <span class="mini-label">RPM</span>
+          <strong id="rpmValue">0</strong>
+        </div>
+        <div class="bar-track">
+          <div id="rpmBar" class="bar-fill magenta"></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="status-grid">
+      <article class="status-card">
+        <span class="mini-label">Temperatura</span>
+        <strong id="tempValue">0</strong>
+      </article>
+      <article class="status-card">
+        <span class="mini-label">Combustivel</span>
+        <strong id="fuelValue">0%</strong>
+      </article>
+      <article class="status-card">
+        <span class="mini-label">Turbo</span>
+        <strong id="turboValue">0</strong>
+      </article>
+      <article class="status-card">
+        <span class="mini-label">Posicao</span>
+        <strong id="positionValue">0</strong>
+      </article>
+    </section>
+
+    <section class="pedals-grid">
+      <article class="pedal-card">
+        <div class="pedal-head"><span>Acelerador</span><strong id="throttleValue">0%</strong></div>
+        <div class="bar-track small"><div id="throttleBar" class="bar-fill lime"></div></div>
+      </article>
+      <article class="pedal-card">
+        <div class="pedal-head"><span>Freio</span><strong id="brakeValue">0%</strong></div>
+        <div class="bar-track small"><div id="brakeBar" class="bar-fill red"></div></div>
+      </article>
+      <article class="pedal-card">
+        <div class="pedal-head"><span>Embreagem</span><strong id="clutchValue">0%</strong></div>
+        <div class="bar-track small"><div id="clutchBar" class="bar-fill blue"></div></div>
+      </article>
+    </section>
+
+    <section class="signal-grid">
+      <div id="signalEngine" class="signal-pill">ENGINE</div>
+      <div id="signalLights" class="signal-pill">LIGHTS</div>
+      <div id="signalBrake" class="signal-pill">BRAKE</div>
+      <div id="signalCruise" class="signal-pill">CRUISE</div>
+      <div id="signalLeft" class="signal-pill">LEFT</div>
+      <div id="signalRight" class="signal-pill">RIGHT</div>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>
+""",
+            "styles.css": """:root {
+  color-scheme: dark;
+  --bg: #07101a;
+  --bg-2: #0d1826;
+  --panel: rgba(7, 18, 29, 0.78);
+  --line: rgba(143, 236, 255, 0.18);
+  --text: #eaf7ff;
+  --muted: #8ba6ba;
+  --cyan: #7cf4ff;
+  --magenta: #ff74b8;
+  --lime: #92ff7a;
+  --red: #ff6b7f;
+  --blue: #6dbdff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top center, rgba(124, 244, 255, 0.16), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(255, 116, 184, 0.12), transparent 24%),
+    linear-gradient(165deg, var(--bg), var(--bg-2));
+}
+.cluster-shell {
+  width: min(1180px, calc(100vw - 24px));
+  margin: 0 auto;
+  padding: 18px 0 28px;
+  display: grid;
+  gap: 16px;
+}
+.cluster-header,
+.speed-card,
+.gear-card,
+.rpm-card,
+.status-card,
+.pedal-card,
+.signal-grid {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 28px;
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 12px 40px rgba(0,0,0,0.22);
+}
+.cluster-header {
+  padding: 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.eyebrow, .mini-label {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  font-size: 12px;
+}
+h1, p { margin: 0; }
+h1 { font-size: clamp(30px, 5vw, 54px); }
+#gameState { margin-top: 8px; color: var(--muted); }
+.collect-chip {
+  padding: 12px 16px;
+  border-radius: 999px;
+  color: var(--cyan);
+  background: rgba(124, 244, 255, 0.12);
+  border: 1px solid rgba(124, 244, 255, 0.2);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.cluster-main {
+  display: grid;
+  grid-template-columns: 1.35fr .7fr 1fr;
+  gap: 16px;
+}
+.speed-card, .gear-card, .rpm-card {
+  padding: 22px;
+  display: grid;
+  gap: 16px;
+}
+.speed-stack {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+#speedValue {
+  font-size: clamp(88px, 16vw, 180px);
+  line-height: 0.88;
+  font-weight: 800;
+  color: var(--cyan);
+  text-shadow: 0 0 20px rgba(124, 244, 255, 0.22);
+}
+.speed-unit {
+  padding-bottom: 18px;
+  color: var(--muted);
+  letter-spacing: 0.16em;
+}
+#gearValue {
+  font-size: clamp(64px, 12vw, 140px);
+  line-height: 1;
+  color: var(--magenta);
+  text-shadow: 0 0 18px rgba(255, 116, 184, 0.22);
+}
+.subvalue {
+  color: var(--muted);
+  font-size: 14px;
+}
+.metric-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#rpmValue {
+  font-size: clamp(44px, 8vw, 88px);
+  color: var(--magenta);
+}
+.bar-track {
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.bar-track.small { height: 12px; }
+.bar-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: 999px;
+  transition: width .2s ease;
+}
+.cyan { background: linear-gradient(90deg, #3ce2ff, #8ef5ff); }
+.magenta { background: linear-gradient(90deg, #ff5da8, #ff9bc8); }
+.lime { background: linear-gradient(90deg, #6eff80, #b8ff89); }
+.red { background: linear-gradient(90deg, #ff5d6d, #ff99a7); }
+.blue { background: linear-gradient(90deg, #4f96ff, #8bc5ff); }
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.status-card {
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+.status-card strong {
+  font-size: clamp(28px, 4vw, 46px);
+}
+.pedals-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.pedal-card {
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+}
+.pedal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+.signal-grid {
+  padding: 18px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+.signal-pill {
+  border-radius: 16px;
+  padding: 14px 10px;
+  text-align: center;
+  color: var(--muted);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.05);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.signal-pill.is-on {
+  color: var(--text);
+  border-color: rgba(124, 244, 255, 0.34);
+  background: rgba(124, 244, 255, 0.12);
+  box-shadow: 0 0 18px rgba(124, 244, 255, 0.12);
+}
+@media (max-width: 860px) {
+  .cluster-shell { width: min(100vw - 16px, 1180px); padding-top: 12px; }
+  .cluster-main { grid-template-columns: 1fr; }
+  .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pedals-grid { grid-template-columns: 1fr; }
+  .signal-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+""",
+            "app.js": """const node = {
+  gameName: document.getElementById("gameName"),
+  gameState: document.getElementById("gameState"),
+  collectChip: document.getElementById("collectChip"),
+  speedValue: document.getElementById("speedValue"),
+  speedBar: document.getElementById("speedBar"),
+  gearValue: document.getElementById("gearValue"),
+  lapValue: document.getElementById("lapValue"),
+  rpmValue: document.getElementById("rpmValue"),
+  rpmBar: document.getElementById("rpmBar"),
+  tempValue: document.getElementById("tempValue"),
+  fuelValue: document.getElementById("fuelValue"),
+  turboValue: document.getElementById("turboValue"),
+  positionValue: document.getElementById("positionValue"),
+  throttleValue: document.getElementById("throttleValue"),
+  throttleBar: document.getElementById("throttleBar"),
+  brakeValue: document.getElementById("brakeValue"),
+  brakeBar: document.getElementById("brakeBar"),
+  clutchValue: document.getElementById("clutchValue"),
+  clutchBar: document.getElementById("clutchBar"),
+  signalEngine: document.getElementById("signalEngine"),
+  signalLights: document.getElementById("signalLights"),
+  signalBrake: document.getElementById("signalBrake"),
+  signalCruise: document.getElementById("signalCruise"),
+  signalLeft: document.getElementById("signalLeft"),
+  signalRight: document.getElementById("signalRight"),
+};
+
+function telemetryMap(rows) {
+  return Object.fromEntries((rows || []).map((row) => [row.key, row.value]));
+}
+
+function toPercent(value, max = 1) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || max <= 0) return 0;
+  return Math.max(0, Math.min(100, (number / max) * 100));
+}
+
+function gearText(value) {
+  const number = Number(value || 0);
+  if (number < 0) return "R";
+  if (number === 0) return "N";
+  return String(number);
+}
+
+function setSignal(element, active) {
+  element.classList.toggle("is-on", !!active);
+}
+
+async function loadState() {
+  try {
+    const response = await fetch("/api/state");
+    const data = await response.json();
+    render(data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function render(data) {
+  const values = telemetryMap(data.telemetry_rows);
+  node.gameName.textContent = data.selected_game || "Aguardando jogo";
+  node.gameState.textContent = data.status_text || "Sem coleta ativa";
+  node.collectChip.textContent = data.is_collecting ? "LIVE" : "OFFLINE";
+  node.speedValue.textContent = values.speed ?? 0;
+  node.gearValue.textContent = gearText(values.current_gear);
+  node.lapValue.textContent = `Lap ${values.lap_number ?? 0}`;
+  node.rpmValue.textContent = values.engine_rpm ?? 0;
+  node.tempValue.textContent = `${values.water_temperature ?? 0}`;
+  node.fuelValue.textContent = `${values.fuel_percent ?? 0}%`;
+  node.turboValue.textContent = `${values.turbo ?? 0}`;
+  node.positionValue.textContent = `${values.race_position ?? values.current_day ?? 0}`;
+  node.throttleValue.textContent = `${Math.round(toPercent(values.throttle))}%`;
+  node.brakeValue.textContent = `${Math.round(toPercent(values.brake))}%`;
+  node.clutchValue.textContent = `${Math.round(toPercent(values.clutch))}%`;
+
+  node.speedBar.style.width = `${Math.max(0, Math.min(100, Number(values.speed || 0) / 3))}%`;
+  node.rpmBar.style.width = `${toPercent(values.engine_rpm, Math.max(Number(values.engine_rpm_max || 9000), 1))}%`;
+  node.throttleBar.style.width = `${toPercent(values.throttle)}%`;
+  node.brakeBar.style.width = `${toPercent(values.brake)}%`;
+  node.clutchBar.style.width = `${toPercent(values.clutch)}%`;
+
+  setSignal(node.signalEngine, values.engine_enabled);
+  setSignal(node.signalLights, values.lights_low_beam || values.lights_high_beam || values.lights_parking);
+  setSignal(node.signalBrake, values.park_brake || values.brake > 0.05);
+  setSignal(node.signalCruise, values.cruise_control);
+  setSignal(node.signalLeft, values.blinker_left_active);
+  setSignal(node.signalRight, values.blinker_right_active);
+}
+
+loadState();
+setInterval(loadState, 300);
+""",
+        }
+
+        for name, content in cluster_files.items():
+            target = cluster_dir / name
             if not target.exists():
                 target.write_text(content, encoding="utf-8")
