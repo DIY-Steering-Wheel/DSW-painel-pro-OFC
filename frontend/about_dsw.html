@@ -1,0 +1,34 @@
+<section style="padding:20px;display:grid;gap:18px;font-family:'Segoe UI',Tahoma,sans-serif;color:#eef4fb;background:linear-gradient(160deg,rgba(10,16,24,.94),rgba(16,26,37,.98));min-height:100%;">
+  <div style="display:grid;gap:6px;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(255,255,255,.035);">
+    <span style="font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8aa5c2;">Propriedade</span>
+    <h3 style="margin:0;font-size:1.35rem;">{{OWNER_NAME}}</h3>
+    <p style="margin:0;color:#9cb0c7;">Material de propriedade da {{OWNER_TEAM}}. Projeto open source para a comunidade de simuladores.</p>
+  </div>
+  <div style="display:grid;grid-template-columns:1.3fr .9fr;gap:18px;">
+    <div style="display:grid;gap:14px;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(255,255,255,.035);">
+      <div>
+        <span style="font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8aa5c2;">Comunidade</span>
+        <h3 style="margin:4px 0 0;">Equipe DSW de Simuladores</h3>
+      </div>
+      <p style="margin:0;color:#9cb0c7;">{{PROJECT_STATUS}}. Esta area fica separada em HTML proprio para voce personalizar com Discord, GitHub, site e outros canais oficiais da DSW.</p>
+      <a href="{{DISCORD_URL}}" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:14px;background:linear-gradient(135deg,#285b96 0%,#3c91e6 100%);color:#fff;text-decoration:none;font-weight:700;">
+        {{DISCORD_LABEL}}
+      </a>
+      <p style="margin:0;color:#9cb0c7;font-size:.92rem;">Depois voce pode editar este mesmo arquivo HTML e adicionar GitHub, documentacao e outros links oficiais.</p>
+    </div>
+    <div style="display:grid;gap:14px;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(255,255,255,.035);align-content:start;">
+      <div>
+        <span style="font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8aa5c2;">Doacao</span>
+        <h3 style="margin:4px 0 0;">Apoie o projeto</h3>
+      </div>
+      <p style="margin:0;color:#9cb0c7;">{{DONATION_MESSAGE}}</p>
+      <div style="display:grid;place-items:center;padding:12px;border-radius:16px;background:#fff;">
+        <img src="{{DONATION_QR}}" alt="QR Code Pix DSW" style="width:210px;height:210px;object-fit:contain;">
+      </div>
+      <div style="padding:12px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);">
+        <strong style="display:block;margin-bottom:6px;">Chave Pix</strong>
+        <code style="word-break:break-all;color:#cce7ff;">{{PIX_KEY}}</code>
+      </div>
+    </div>
+  </div>
+</section>

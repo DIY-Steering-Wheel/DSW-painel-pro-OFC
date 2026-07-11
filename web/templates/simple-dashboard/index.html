@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DSW Dashboard</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="dashboard">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">DSW Painel Open</p>
+        <h1 id="gameName">Aguardando jogo</h1>
+        <p id="gameState">Sem coleta ativa</p>
+      </div>
+      <span id="collectChip" class="chip">Offline</span>
+    </section>
+    <section class="grid">
+      <article class="card">
+        <h2>Velocidade</h2>
+        <strong id="speedValue">0</strong>
+      </article>
+      <article class="card">
+        <h2>RPM</h2>
+        <strong id="rpmValue">0</strong>
+      </article>
+      <article class="card">
+        <h2>Marcha</h2>
+        <strong id="gearValue">0</strong>
+      </article>
+      <article class="card">
+        <h2>Temperatura</h2>
+        <strong id="tempValue">0</strong>
+      </article>
+    </section>
+    <section class="list-card">
+      <div class="list-head">
+        <h2>Telemetria ao vivo</h2>
+        <span id="updatedAt">--:--:--</span>
+      </div>
+      <div id="telemetryList" class="telemetry-list"></div>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>
