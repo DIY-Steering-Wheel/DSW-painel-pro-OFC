@@ -593,6 +593,7 @@ class TelemetryBridge:
                             "temperature_unit": self.temperature_unit,
                         }
                     )
+                    telemetry = self._apply_equalization(plugin, telemetry)
                     with self._lock:
                         self._telemetry = telemetry
                         self._status_text = "Coletando telemetria"
@@ -669,6 +670,75 @@ class TelemetryBridge:
     def _reload_plugins(self) -> None:
         self.plugins = self.registry.refresh()
         self._plugin_by_name = {plugin["name"]: plugin for plugin in self.plugins}
+
+    def _apply_equalization(self, plugin: dict[str, Any], telemetry: dict[str, Any]) -> dict[str, Any]:
+        rules = self.store.load_settings().get("value_equalization_rules", [])
+        if not rules:
+            return telemetry
+
+        result = dict(telemetry)
+        plugin_id = plugin.get("id", "")
+        for rule in rules:
+            if not self._rule_matches_game(rule, plugin_id):
+                continue
+
+            field_key = rule.get("field_key")
+            if field_key not in result:
+                continue
+
+            source_value = self._coerce_numeric(result.get(field_key))
+            if source_value is None:
+                continue
+
+            transformed = self._transform_numeric_value(
+                source_value,
+                float(rule["source_min"]),
+                float(rule["source_max"]),
+                float(rule["target_min"]),
+                float(rule["target_max"]),
+            )
+            if transformed is None:
+                continue
+
+            original_value = result.get(field_key)
+            if isinstance(original_value, bool):
+                result[field_key] = transformed >= 0.5
+            elif isinstance(original_value, int) and not isinstance(original_value, bool):
+                result[field_key] = int(round(transformed))
+            else:
+                result[field_key] = round(transformed, 3)
+
+        return result
+
+    def _rule_matches_game(self, rule: dict[str, Any], plugin_id: str) -> bool:
+        if rule.get("apply_to_all"):
+            return True
+        return plugin_id in rule.get("game_ids", [])
+
+    def _coerce_numeric(self, value: Any) -> float | None:
+        if isinstance(value, bool):
+            return 1.0 if value else 0.0
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _transform_numeric_value(
+        self,
+        value: float,
+        source_min: float,
+        source_max: float,
+        target_min: float,
+        target_max: float,
+    ) -> float | None:
+        source_span = source_max - source_min
+        if abs(source_span) < 1e-9:
+            return None
+        normalized = (value - source_min) / source_span
+        transformed = target_min + normalized * (target_max - target_min)
+        lower = min(target_min, target_max)
+        upper = max(target_min, target_max)
+        return max(lower, min(upper, transformed))
 
     def _load_about_template(self) -> str:
         about_path = self.base_dir / "frontend" / "about_dsw.html"

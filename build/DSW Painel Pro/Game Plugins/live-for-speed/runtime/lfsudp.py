@@ -15,16 +15,16 @@ _motion_data = {"x": 0.0, "y": 0.0, "z": 0.0}
 
 
 def decodeFlag(flag):
-    flagBin = f"{flag:03b}"[::-1]
+    flagBin = bin(flag)[2:].zfill(32)
     return {
-        "showTurbo": bool(int(flagBin[2])),
-        "showKM": not bool(int(flagBin[1])),
-        "showBAR": not bool(int(flagBin[0])),
+        "showTurbo": flagBin[-14] == "1",
+        "showKM": flagBin[-15] == "1",
+        "showBAR": flagBin[-16] == "1",
     }
 
 
 def decodeLights(lightsAvailable, lightsActive):
-    lightsActBin = f"{lightsActive:012b}"[::-1]
+    lightsActBin = bin(lightsActive)[2:][::-1]
     totalLights = [
         "shift_light",
         "full_beam",
@@ -38,8 +38,17 @@ def decodeLights(lightsAvailable, lightsActive):
         "battery_warn",
         "abs",
         "spare_light",
+        "sidelights",
+        "low_fuel",
+        "rear_fog",
+        "fog",
+        "dipped_headlight",
+        "engine_damage",
     ]
-    return {light: bool(int(lightsActBin[i])) for i, light in enumerate(totalLights)}
+    lights = {}
+    for index, light in enumerate(totalLights):
+        lights[light] = index < len(lightsActBin) and lightsActBin[index] == "1"
+    return lights
 
 
 def _recv_latest(sock, size):
@@ -107,7 +116,7 @@ def readData():
             "rpm": unpackedData[6],
             "turboPressure": unpackedData[7],
             "engTemp": unpackedData[8],
-            "fuel": unpackedData[9],
+            "fuel": unpackedData[9] * 100,
             "oilPressure": unpackedData[10],
             "oilTemp": unpackedData[11],
             "bico_de_luz": decodeLights(unpackedData[12], unpackedData[13]),
@@ -124,9 +133,9 @@ def readData():
     if motion_packet and len(motion_packet) >= 64:
         outsim_pack = struct.unpack("I12f3i", motion_packet[:64])
         _motion_data = {
-            "x": outsim_pack[9],
-            "y": outsim_pack[10],
-            "z": outsim_pack[11],
+            "x": outsim_pack[7],
+            "y": outsim_pack[8],
+            "z": outsim_pack[9],
         }
 
     if _gauge_data:

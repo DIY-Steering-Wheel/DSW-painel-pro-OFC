@@ -18,6 +18,7 @@
     "blinker_right_active",
     "lights_parking",
     "lights_low_beam",
+    "lights_high_beam",
     "battery_voltage_warning",
     "oil_warning",
     "water_warning",

@@ -237,6 +237,10 @@
             <i class="bi bi-diagram-3"></i>
             <span>Fallbacks</span>
           </button>
+          <button class="settings-tab" data-settings-tab="equalization">
+            <i class="bi bi-sliders"></i>
+            <span>Equalizacao</span>
+          </button>
           <button class="settings-tab" data-settings-tab="plugins">
             <i class="bi bi-plugin"></i>
             <span>Plugins</span>
@@ -311,6 +315,50 @@
                   </div>
                 </div>
                 <div id="fallbackList" class="fallback-list"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="settingsPaneEqualization" class="settings-pane">
+            <div class="fallback-layout equalization-layout">
+              <div class="card-section fallback-editor">
+                <label class="form-label" for="equalizationField">Variavel</label>
+                <select id="equalizationField" class="form-select"></select>
+                <label class="form-label" for="equalizationSourceMin">Min atual</label>
+                <input id="equalizationSourceMin" class="form-control" type="number" step="0.001" placeholder="Ex.: -1">
+                <label class="form-label" for="equalizationSourceMax">Max atual</label>
+                <input id="equalizationSourceMax" class="form-control" type="number" step="0.001" placeholder="Ex.: 1">
+                <label class="form-label" for="equalizationTargetMin">Min desejado</label>
+                <input id="equalizationTargetMin" class="form-control" type="number" step="0.001" placeholder="Ex.: -100">
+                <label class="form-label" for="equalizationTargetMax">Max desejado</label>
+                <input id="equalizationTargetMax" class="form-control" type="number" step="0.001" placeholder="Ex.: 100">
+                <label class="form-check form-switch switch-card switch-card-wide">
+                  <input id="equalizationApplyToAll" class="form-check-input" type="checkbox" role="switch" checked>
+                  <span class="form-check-label">Aplicar para todos os jogos</span>
+                </label>
+                <div class="equalization-games-block">
+                  <div class="motion-chart-head">
+                    <div>
+                      <span class="eyebrow">Escopo</span>
+                      <h3>Jogos afetados</h3>
+                    </div>
+                  </div>
+                  <div id="equalizationGameList" class="equalization-game-list"></div>
+                </div>
+                <div class="install-actions">
+                  <button id="addEqualizationBtn" class="btn btn-danger" type="button">Adicionar / atualizar</button>
+                  <button id="clearEqualizationFormBtn" class="btn btn-outline-light" type="button">Limpar formulario</button>
+                </div>
+                <p class="form-help">A transformacao usa proporcao linear e limita o resultado na faixa desejada.</p>
+              </div>
+              <div class="card-section fallback-list-wrap">
+                <div class="motion-chart-head">
+                  <div>
+                    <span class="eyebrow">Regras</span>
+                    <h3>Equalizacoes configuradas</h3>
+                  </div>
+                </div>
+                <div id="equalizationList" class="fallback-list"></div>
               </div>
             </div>
           </section>

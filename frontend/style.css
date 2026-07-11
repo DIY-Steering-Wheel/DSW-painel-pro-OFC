@@ -626,9 +626,36 @@ select {
   min-height: 320px;
 }
 
+.equalization-layout {
+  grid-template-columns: 360px minmax(0, 1fr);
+}
+
 .integration-layout {
   display: grid;
   gap: 16px;
+}
+
+.equalization-games-block {
+  display: grid;
+  gap: 10px;
+}
+
+.equalization-game-list {
+  display: grid;
+  gap: 10px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.equalization-game-item {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.equalization-game-item.is-disabled {
+  opacity: 0.6;
 }
 
 .device-status-meta {

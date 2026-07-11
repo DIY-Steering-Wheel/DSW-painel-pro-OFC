@@ -3,6 +3,8 @@ let state = null;
 let pollTimer = null;
 let activeSettingsTab = "general";
 let fallbackOverridesDraft = {};
+let equalizationRulesDraft = [];
+let equalizationSelectedGameIds = [];
 let installBusyState = null;
 let qrPreviewVisible = false;
 const motionHistory = [];
@@ -114,6 +116,14 @@ function bindUi() {
   ui.addFallbackBtn = document.getElementById("addFallbackBtn");
   ui.clearFallbackValueBtn = document.getElementById("clearFallbackValueBtn");
   ui.fallbackList = document.getElementById("fallbackList");
+  ui.equalizationField = document.getElementById("equalizationField");
+  ui.equalizationSourceMin = document.getElementById("equalizationSourceMin");
+  ui.equalizationSourceMax = document.getElementById("equalizationSourceMax");
+  ui.equalizationTargetMin = document.getElementById("equalizationTargetMin");
+  ui.equalizationTargetMax = document.getElementById("equalizationTargetMax");
+  ui.equalizationApplyToAll = document.getElementById("equalizationApplyToAll");
+  ui.equalizationGameList = document.getElementById("equalizationGameList");
+  ui.equalizationList = document.getElementById("equalizationList");
   ui.pluginPackagePath = document.getElementById("pluginPackagePath");
   ui.pluginGithubUrl = document.getElementById("pluginGithubUrl");
   ui.pluginGithubSummary = document.getElementById("pluginGithubSummary");
@@ -151,6 +161,7 @@ function bindUi() {
   ui.settingsPanes = {
     general: document.getElementById("settingsPaneGeneral"),
     fallbacks: document.getElementById("settingsPaneFallbacks"),
+    equalization: document.getElementById("settingsPaneEqualization"),
     plugins: document.getElementById("settingsPanePlugins"),
     templates: document.getElementById("settingsPaneTemplates"),
     devices: document.getElementById("settingsPaneDevices"),
@@ -235,6 +246,9 @@ function bindUi() {
   ui.clearFallbackValueBtn.addEventListener("click", () => {
     ui.fallbackValue.value = "";
   });
+  document.getElementById("addEqualizationBtn").addEventListener("click", addOrUpdateEqualizationRule);
+  document.getElementById("clearEqualizationFormBtn").addEventListener("click", clearEqualizationForm);
+  ui.equalizationApplyToAll.addEventListener("change", renderEqualizationGameSelector);
   ui.webServerEnabled.addEventListener("change", toggleWebServer);
   ui.udpServerEnabled.addEventListener("change", toggleUdpServer);
   ui.toggleQrPreviewBtn.addEventListener("click", () => {
@@ -373,6 +387,11 @@ function renderConfigInputs() {
   ui.launchWithWindows.checked = !!state.basic_settings.launch_with_windows;
   ui.detectOpenGameOnStart.checked = !!state.basic_settings.detect_open_game_on_start;
   fallbackOverridesDraft = { ...(state.basic_settings.fallback_overrides || {}) };
+  equalizationRulesDraft = (state.basic_settings.value_equalization_rules || []).map((rule) => ({
+    ...rule,
+    game_ids: [...(rule.game_ids || [])],
+  }));
+  equalizationSelectedGameIds = state.games.filter((game) => game.selected).map((game) => game.id);
   ui.pluginGithubUrl.value = state.plugin_manager.github_repo_url || "";
 
   ui.webServerHost.value = state.web_server.http_host || "0.0.0.0";
@@ -385,6 +404,8 @@ function renderConfigInputs() {
   renderPanelSlots();
   renderFallbackEditor();
   renderFallbackList();
+  renderEqualizationEditor();
+  renderEqualizationList();
   renderSelectedGameUnitHint();
   setSettingsTab(activeSettingsTab);
 }
@@ -870,6 +891,84 @@ function bindExternalLinks(root) {
   });
 }
 
+function renderEqualizationEditor() {
+  const selectedField = ui.equalizationField.value;
+  ui.equalizationField.innerHTML = "";
+  state.panel_fields.forEach((field) => {
+    const option = document.createElement("option");
+    option.value = field.key;
+    option.textContent = `${field.label} (${field.key})`;
+    option.selected = field.key === selectedField;
+    ui.equalizationField.appendChild(option);
+  });
+  if (!ui.equalizationField.value && state.panel_fields.length) {
+    ui.equalizationField.value = state.panel_fields[0].key;
+  }
+  renderEqualizationGameSelector();
+}
+
+function renderEqualizationGameSelector() {
+  ui.equalizationGameList.innerHTML = "";
+  const disabled = ui.equalizationApplyToAll.checked;
+  state.games.forEach((game) => {
+    const label = document.createElement("label");
+    label.className = `form-check switch-card equalization-game-item ${disabled ? "is-disabled" : ""}`;
+    const checked = disabled || equalizationSelectedGameIds.includes(game.id);
+    label.innerHTML = `
+      <input class="form-check-input" type="checkbox" value="${game.id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}>
+      <span class="form-check-label">${game.name}</span>
+    `;
+    const input = label.querySelector("input");
+    input.addEventListener("change", () => {
+      if (input.checked) {
+        if (!equalizationSelectedGameIds.includes(game.id)) {
+          equalizationSelectedGameIds.push(game.id);
+        }
+      } else {
+        equalizationSelectedGameIds = equalizationSelectedGameIds.filter((gameId) => gameId !== game.id);
+      }
+    });
+    ui.equalizationGameList.appendChild(label);
+  });
+}
+
+function renderEqualizationList() {
+  ui.equalizationList.innerHTML = "";
+  if (!equalizationRulesDraft.length) {
+    const empty = document.createElement("div");
+    empty.className = "fallback-item";
+    empty.innerHTML = `<div><strong>Nenhuma equalizacao configurada</strong><span>Crie uma regra por variavel e escopo de jogos.</span></div>`;
+    ui.equalizationList.appendChild(empty);
+    return;
+  }
+
+  equalizationRulesDraft.forEach((rule, index) => {
+    const field = state.panel_fields.find((item) => item.key === rule.field_key);
+    const gameNames = rule.apply_to_all
+      ? "Todos os jogos"
+      : (rule.game_ids || [])
+        .map((gameId) => state.games.find((game) => game.id === gameId)?.name || gameId)
+        .join(", ");
+    const item = document.createElement("div");
+    item.className = "fallback-item";
+    item.innerHTML = `
+      <div>
+        <strong>${field ? field.label : rule.field_key}</strong>
+        <span>${rule.source_min}..${rule.source_max} -> ${rule.target_min}..${rule.target_max} | ${gameNames || "Nenhum jogo"}</span>
+      </div>
+    `;
+    const button = document.createElement("button");
+    button.className = "btn btn-outline-light";
+    button.textContent = "Remover";
+    button.addEventListener("click", () => {
+      equalizationRulesDraft.splice(index, 1);
+      renderEqualizationList();
+    });
+    item.appendChild(button);
+    ui.equalizationList.appendChild(item);
+  });
+}
+
 async function handleMainAction() {
   const selected = getSelectedGame();
   if (selected.installed === "no") {
@@ -954,6 +1053,7 @@ async function saveBasicSettings() {
     launch_with_windows: ui.launchWithWindows.checked,
     detect_open_game_on_start: ui.detectOpenGameOnStart.checked,
     fallback_overrides: fallbackOverridesDraft,
+    value_equalization_rules: equalizationRulesDraft,
   });
   closeModals();
   render();
@@ -1025,6 +1125,55 @@ function coerceFallbackValue(defaultValue, rawValue) {
     return Number.isFinite(numeric) ? numeric : 0;
   }
   return rawValue;
+}
+
+function addOrUpdateEqualizationRule() {
+  const sourceMin = Number(ui.equalizationSourceMin.value);
+  const sourceMax = Number(ui.equalizationSourceMax.value);
+  const targetMin = Number(ui.equalizationTargetMin.value);
+  const targetMax = Number(ui.equalizationTargetMax.value);
+  if (![sourceMin, sourceMax, targetMin, targetMax].every(Number.isFinite)) {
+    return;
+  }
+  const applyToAll = ui.equalizationApplyToAll.checked;
+  const gameIds = applyToAll ? [] : [...equalizationSelectedGameIds].sort();
+  if (!applyToAll && !gameIds.length) {
+    return;
+  }
+
+  const rule = {
+    field_key: ui.equalizationField.value,
+    source_min: sourceMin,
+    source_max: sourceMax,
+    target_min: targetMin,
+    target_max: targetMax,
+    apply_to_all: applyToAll,
+    game_ids: gameIds.sort(),
+  };
+  const signature = `${rule.field_key}|${rule.apply_to_all ? "*" : rule.game_ids.join(",")}`;
+  const existingIndex = equalizationRulesDraft.findIndex((item) => {
+    const itemSignature = `${item.field_key}|${item.apply_to_all ? "*" : [...(item.game_ids || [])].sort().join(",")}`;
+    return itemSignature === signature;
+  });
+  if (existingIndex >= 0) {
+    equalizationRulesDraft[existingIndex] = rule;
+  } else {
+    equalizationRulesDraft.push(rule);
+  }
+  renderEqualizationList();
+  clearEqualizationForm(false);
+}
+
+function clearEqualizationForm(resetApplyToAll = true) {
+  ui.equalizationSourceMin.value = "";
+  ui.equalizationSourceMax.value = "";
+  ui.equalizationTargetMin.value = "";
+  ui.equalizationTargetMax.value = "";
+  equalizationSelectedGameIds = state.games.filter((game) => game.selected).map((game) => game.id);
+  if (resetApplyToAll) {
+    ui.equalizationApplyToAll.checked = true;
+  }
+  renderEqualizationGameSelector();
 }
 
 function setInstallBusy(text) {

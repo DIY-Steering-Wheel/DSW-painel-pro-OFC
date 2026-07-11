@@ -171,6 +171,7 @@ class ConfigStore:
             "pressure_unit": "BAR",
             "temperature_unit": "Celsius",
             "fallback_overrides": {},
+            "value_equalization_rules": [],
             "web_server": {
                 "http_enabled": False,
                 "http_host": "0.0.0.0",
@@ -194,6 +195,7 @@ class ConfigStore:
             self._write_json(self.settings_path, default)
         if not isinstance(default.get("fallback_overrides"), dict):
             default["fallback_overrides"] = {}
+        default["value_equalization_rules"] = self._sanitize_value_equalization(default.get("value_equalization_rules"))
         if not isinstance(default.get("web_server"), dict):
             default["web_server"] = {}
         default["web_server"] = self._merge_web_server_defaults(default["web_server"])
@@ -202,6 +204,7 @@ class ConfigStore:
     def save_settings(self, data: dict[str, Any]) -> dict[str, Any]:
         current = self.load_settings()
         current.update(data)
+        current["value_equalization_rules"] = self._sanitize_value_equalization(current.get("value_equalization_rules"))
         current["web_server"] = self._merge_web_server_defaults(current.get("web_server", {}))
         self._write_json(self.settings_path, current)
         return current
@@ -241,6 +244,52 @@ class ConfigStore:
         except (TypeError, ValueError):
             fps = 20
         return max(1, min(fps, 120))
+
+    def _sanitize_value_equalization(self, rules: Any) -> list[dict[str, Any]]:
+        if not isinstance(rules, list):
+            return []
+
+        sanitized: list[dict[str, Any]] = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+
+            field_key = str(rule.get("field_key", "")).strip()
+            if field_key not in PANEL_FIELD_KEYS:
+                continue
+
+            source_min = self._coerce_number(rule.get("source_min"))
+            source_max = self._coerce_number(rule.get("source_max"))
+            target_min = self._coerce_number(rule.get("target_min"))
+            target_max = self._coerce_number(rule.get("target_max"))
+            if None in {source_min, source_max, target_min, target_max}:
+                continue
+
+            game_ids = []
+            for game_id in rule.get("game_ids", []):
+                text = str(game_id).strip()
+                if text and text not in game_ids:
+                    game_ids.append(text)
+
+            sanitized.append(
+                {
+                    "field_key": field_key,
+                    "source_min": source_min,
+                    "source_max": source_max,
+                    "target_min": target_min,
+                    "target_max": target_max,
+                    "apply_to_all": bool(rule.get("apply_to_all", False)),
+                    "game_ids": game_ids,
+                }
+            )
+
+        return sanitized
+
+    def _coerce_number(self, value: Any) -> float | None:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     def _read_json(self, path: Path) -> dict[str, Any]:
         with path.open("r", encoding="utf-8") as handle:
