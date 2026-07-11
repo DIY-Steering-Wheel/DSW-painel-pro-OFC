@@ -3,7 +3,7 @@
   "name": "Live For Speed",
   "icon": "icon.png",
   "requires_install": true,
-  "process_name": "LFS.x64",
+  "process_name": "LFS.exe",
   "telemetry_script": "telemetry.py",
   "installer_script": "installer.py",
   "emitted_fields": [
