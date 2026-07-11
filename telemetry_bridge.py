@@ -520,15 +520,11 @@ class TelemetryBridge:
         return self.snapshot()
 
     def start_collection(self) -> None:
-        selected = self.snapshot()["selected_game"]
-        if not self.is_game_active(selected):
-            self._set_error("Abra o jogo antes de iniciar a telemetria.")
-            return
         with self._lock:
             if self._is_collecting:
                 return
             self._is_collecting = True
-            self._status_text = "Iniciando coleta..."
+            self._status_text = "Aguardando telemetria..."
             self._last_error = ""
             self._stop_event.clear()
         self._thread = threading.Thread(target=self._collector_loop, daemon=True)
@@ -540,6 +536,7 @@ class TelemetryBridge:
         with self._lock:
             self._is_collecting = False
             self._status_text = "Parado"
+            self._telemetry = {}
         self._stop_event.set()
         if wait and thread is not None and thread.is_alive() and thread is not threading.current_thread():
             thread.join(timeout=1.0)
@@ -549,16 +546,16 @@ class TelemetryBridge:
             except Exception:
                 pass
         self._collector_module = None
+        self.motion_sender.send_defaults(force=True)
+        self.panel_sender.send_defaults(force=True)
 
     def is_game_active(self, game_name: str) -> bool:
-        executable_name = self.plugin_meta(game_name).get("process_name")
-        if not executable_name:
+        plugin = self.plugin_meta(game_name)
+        if self._telemetry_reports_activity(plugin):
+            return True
+        expected_names = self._expected_process_names(plugin)
+        if not expected_names:
             return False
-        expected_names = {executable_name.lower()}
-        if executable_name.lower().endswith(".exe"):
-            expected_names.add(executable_name[:-4].lower())
-        else:
-            expected_names.add(f"{executable_name}.exe".lower())
         for process in psutil.process_iter(["name"]):
             try:
                 process_name = (process.info["name"] or "").lower()
@@ -586,20 +583,22 @@ class TelemetryBridge:
         try:
             while not self._stop_event.is_set():
                 try:
-                    telemetry = collector_module.collect(
-                        {
-                            "speed_unit": self.speed_unit,
-                            "pressure_unit": self.pressure_unit,
-                            "temperature_unit": self.temperature_unit,
-                        }
-                    )
-                    telemetry = self._apply_equalization(plugin, telemetry)
-                    with self._lock:
-                        self._telemetry = telemetry
-                        self._status_text = "Coletando telemetria"
-                        self._last_error = ""
-                    self.motion_sender.send(telemetry)
-                    self.panel_sender.send(telemetry)
+                    telemetry = collector_module.collect(self._collector_settings(plugin))
+                    if self._telemetry_payload_is_active(plugin, telemetry):
+                        telemetry = self._apply_equalization(plugin, telemetry)
+                        with self._lock:
+                            self._telemetry = telemetry
+                            self._status_text = "Coletando telemetria"
+                            self._last_error = ""
+                        self.motion_sender.send(telemetry)
+                        self.panel_sender.send(telemetry)
+                    else:
+                        with self._lock:
+                            self._telemetry = {}
+                            self._status_text = "Aguardando telemetria..."
+                            self._last_error = ""
+                        self.motion_sender.send_defaults()
+                        self.panel_sender.send_defaults()
                     time.sleep(0.02)
                 except Exception as exc:
                     self._set_error(f"Erro ao coletar telemetria: {exc}")
@@ -616,6 +615,54 @@ class TelemetryBridge:
             return "Pronto para coletar"
         installed = self.store.load_games(list(self._plugin_by_name)).get(game_name, "no")
         return "Pronto para coletar" if installed == "yes" else "Necessita instalação"
+
+    def _collector_settings(self, plugin: dict[str, Any] | None = None) -> dict[str, Any]:
+        telemetry_config = (plugin or {}).get("telemetry")
+        if not isinstance(telemetry_config, dict):
+            telemetry_config = {}
+        settings = dict(telemetry_config)
+        settings.update({
+            "speed_unit": self.speed_unit,
+            "pressure_unit": self.pressure_unit,
+            "temperature_unit": self.temperature_unit,
+            "telemetry_ip": telemetry_config.get("bind_ip", "0.0.0.0"),
+            "telemetry_port": telemetry_config.get("port", 9999),
+            "udp_ip": telemetry_config.get("bind_ip", "0.0.0.0"),
+            "udp_port": telemetry_config.get("port", 9999),
+        })
+        return settings
+
+    def _expected_process_names(self, plugin: dict[str, Any]) -> set[str]:
+        names = []
+        primary_name = plugin.get("process_name")
+        if primary_name:
+            names.append(primary_name)
+        names.extend(plugin.get("process_names") or [])
+        expected_names: set[str] = set()
+        for name in names:
+            normalized = str(name or "").strip().lower()
+            if not normalized:
+                continue
+            expected_names.add(normalized)
+            if normalized.endswith(".exe"):
+                expected_names.add(normalized[:-4])
+            else:
+                expected_names.add(f"{normalized}.exe")
+        return expected_names
+
+    def _telemetry_reports_activity(self, plugin: dict[str, Any]) -> bool:
+        collector_module = self.registry.load_module(plugin, "telemetry_script")
+        if collector_module is None or not hasattr(collector_module, "is_active"):
+            return False
+        try:
+            return bool(collector_module.is_active(self._collector_settings(plugin)))
+        except Exception:
+            return False
+
+    def _telemetry_payload_is_active(self, plugin: dict[str, Any], telemetry: dict[str, Any]) -> bool:
+        if plugin.get("activity_source") == "telemetry":
+            return bool(telemetry.get("connected"))
+        return bool(telemetry)
 
     def _set_status(self, text: str) -> None:
         with self._lock:

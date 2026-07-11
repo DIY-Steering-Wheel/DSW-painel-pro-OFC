@@ -4,6 +4,8 @@
     { "folder": "euro-truck-simulator-2", "built_in": true },
     { "folder": "american-truck-simulator", "built_in": true },
     { "folder": "beamng-drive", "built_in": true },
+    { "folder": "forza", "built_in": true },
+    { "folder": "my-summer-car", "built_in": true },
     { "folder": "live-for-speed", "built_in": true }
   ]
 }

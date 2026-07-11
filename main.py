@@ -25,8 +25,8 @@ def run() -> None:
         url=(base_dir / "frontend" / "index.html").as_uri(),
         js_api=api,
         width=800,
-        height=484,
-        min_size=(1200, 540),
+        height=581,
+        min_size=(1200, 648),
         resizable=False,
         background_color="#111111",
     )

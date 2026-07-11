@@ -36,6 +36,16 @@ class PanelSender:
         if not self._can_dispatch(float(config.get("fps", 20))):
             return
         values = self.preview_values(telemetry)
+        self._send_values(values, config)
+
+    def send_defaults(self, force: bool = False) -> None:
+        config = self.store.load_panel_config()
+        if not force and not self._can_dispatch(float(config.get("fps", 20))):
+            return
+        values = self.preview_values({})
+        self._send_values(values, config)
+
+    def _send_values(self, values: list[Any], config: dict[str, Any]) -> None:
         port = config.get("port")
         if not port or serial is None:
             return
@@ -167,6 +177,17 @@ class MotionSender:
             return
         if not self._can_dispatch(float(config.get("fps", 20))):
             return
+        self._send_axes(telemetry, config)
+
+    def send_defaults(self, force: bool = False) -> None:
+        config = self.store.load_motion_config()
+        if not config.get("is_sending"):
+            return
+        if not force and not self._can_dispatch(float(config.get("fps", 20))):
+            return
+        self._send_axes({}, config)
+
+    def _send_axes(self, telemetry: dict[str, Any], config: dict[str, Any]) -> None:
         port = config.get("port")
         if not port or serial is None:
             return

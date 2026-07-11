@@ -29,7 +29,7 @@ body {
 body {
   margin: 0;
   min-width: 800px;
-  min-height: 484px;
+  min-height: 581px;
   color: var(--text);
   background:
     radial-gradient(circle at top left, rgba(60, 145, 230, 0.28), transparent 30%),
