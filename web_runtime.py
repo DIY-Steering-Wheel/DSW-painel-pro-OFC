@@ -56,6 +56,7 @@ class WebRuntimeService:
         selected_meta = next((item for item in templates if item["id"] == selected_template), None)
         return {
             "http_enabled": self._http_server is not None,
+            "http_auto_start": bool(web_config.get("http_auto_start", False)),
             "http_host": web_config.get("http_host", "0.0.0.0"),
             "http_port": http_port,
             "http_url": f"http://localhost:{http_port}",
@@ -67,6 +68,7 @@ class WebRuntimeService:
             "selected_template_name": (selected_meta or {}).get("name", "Sem template"),
             "templates": templates,
             "udp_enabled": self._udp_thread is not None and self._udp_thread.is_alive(),
+            "udp_auto_start": bool(web_config.get("udp_auto_start", False)),
             "udp_host": web_config.get("udp_host", "0.0.0.0"),
             "udp_port": udp_port,
             "udp_packets": self._udp_packets,

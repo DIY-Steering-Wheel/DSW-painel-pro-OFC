@@ -245,6 +245,10 @@
             <i class="bi bi-plugin"></i>
             <span>Plugins</span>
           </button>
+          <button class="settings-tab" data-settings-tab="useful">
+            <i class="bi bi-journal-text"></i>
+            <span>Informacoes uteis</span>
+          </button>
           <button class="settings-tab" data-settings-tab="templates">
             <i class="bi bi-layout-text-window"></i>
             <span>Templates HTML</span>
@@ -376,6 +380,21 @@
                 </div>
               </div>
               <div id="pluginList" class="plugin-list"></div>
+            </div>
+          </section>
+
+          <section id="settingsPaneUseful" class="settings-pane">
+            <div class="integration-layout">
+              <div class="card-section integration-card">
+                <div class="motion-chart-head">
+                  <div>
+                    <span class="eyebrow">Referencia</span>
+                    <h3>Variaveis disponiveis</h3>
+                  </div>
+                </div>
+                <p class="form-help">Use esta lista para entender o significado real das variaveis tecnicas exibidas pelo DSW.</p>
+                <div id="usefulInfoList" class="fallback-list"></div>
+              </div>
             </div>
           </section>
 
@@ -524,6 +543,10 @@
             <input id="webServerEnabled" class="form-check-input" type="checkbox" role="switch">
             <span class="form-check-label">Ligar painel web para navegador e celular</span>
           </label>
+          <label class="form-check form-switch switch-card switch-card-wide">
+            <input id="webServerAutoStart" class="form-check-input" type="checkbox" role="switch">
+            <span class="form-check-label">Iniciar automaticamente ao abrir o app</span>
+          </label>
           <div class="server-form-grid">
             <div>
               <label class="form-label" for="webServerHost">Host</label>
@@ -567,6 +590,10 @@
           <label class="form-check form-switch switch-card switch-card-wide">
             <input id="udpServerEnabled" class="form-check-input" type="checkbox" role="switch">
             <span class="form-check-label">Ligar servidor UDP para apps externos</span>
+          </label>
+          <label class="form-check form-switch switch-card switch-card-wide">
+            <input id="udpServerAutoStart" class="form-check-input" type="checkbox" role="switch">
+            <span class="form-check-label">Iniciar automaticamente ao abrir o app</span>
           </label>
           <div class="server-form-grid">
             <div>

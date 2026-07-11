@@ -1,0 +1,80 @@
+{
+  "id": "my-summer-car",
+  "name": "My Summer Car",
+  "icon": "icon.png",
+  "requires_install": false,
+  "activity_source": "telemetry",
+  "process_name": "mysummercar.exe",
+  "process_names": [
+    "mysummercar.exe",
+    "MySummerCar.exe"
+  ],
+  "telemetry_script": "telemetry.py",
+  "emitted_fields": [
+    "engine_rpm",
+    "current_gear",
+    "speed",
+    "water_temperature",
+    "electric_enabled",
+    "engine_enabled",
+    "fuel_percent",
+    "clutch",
+    "brake",
+    "throttle"
+  ],
+  "available_extra_fields": [
+    "connected",
+    "oil_temperature",
+    "oil_pressure",
+    "battery_voltage_warning",
+    "park_brake",
+    "lights_parking",
+    "lights_low_beam",
+    "lights_high_beam",
+    "blinker_left_active",
+    "blinker_right_active",
+    "traction_control",
+    "abs",
+    "acceleration_x",
+    "acceleration_y",
+    "acceleration_z",
+    "raw_speed",
+    "raw_gear"
+  ],
+  "emitted_units": {
+    "speed": "KM/H",
+    "pressure": "BAR",
+    "temperature": "Celsius"
+  },
+  "preferred_units": {
+    "speed": "KM/H",
+    "pressure": "BAR",
+    "temperature": "Celsius"
+  },
+  "installer": {
+    "method": "tutorial_only",
+    "title": "Telemetria My Summer Car",
+    "description": "O DSW le os dados diretamente do WebSocket exposto pelo mod de telemetria do My Summer Car.",
+    "success_message": "My Summer Car nao precisa de instalacao dentro do DSW."
+  },
+  "telemetry": {
+    "protocol": "WebSocket",
+    "url": "ws://127.0.0.1:2609"
+  },
+  "setup_tutorial": {
+    "title": "Configuracao da telemetria do My Summer Car",
+    "summary": "Instale primeiro o mod de telemetria do jogo. Depois disso o DSW passa a ler direto do WebSocket local do mod.",
+    "steps": [
+      "Baixe e instale o mod de telemetria: https://www.nexusmods.com/games/mysummercar",
+      "Abra o jogo com o mod instalado.",
+      "Deixe o mod com o WebSocket local ativo na porta 2609.",
+      "No DSW, selecione My Summer Car e inicie a coleta.",
+      "Se o jogo ja estiver aberto, o DSW pode ficar em aguardando telemetria ate o mod comecar a enviar dados."
+    ],
+    "notes": [
+      "O plugin converte a marcha para o padrao do DSW: re = -1, neutro = 0, primeira = 1 em diante.",
+      "Se nada chegar, confira firewall, se a porta 2609 esta livre e se o mod foi instalado corretamente.",
+      "O DSW nao depende do EXE do jogo para iniciar a coleta desse plugin; a validacao real e pela telemetria recebida."
+    ]
+  }
+}

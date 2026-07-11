@@ -132,11 +132,13 @@ function bindUi() {
   ui.templateZipPath = document.getElementById("templateZipPath");
   ui.templateZipSummary = document.getElementById("templateZipSummary");
   ui.settingsTemplateList = document.getElementById("settingsTemplateList");
+  ui.usefulInfoList = document.getElementById("usefulInfoList");
   ui.deviceStatusList = document.getElementById("deviceStatusList");
   ui.aboutHtmlHost = document.getElementById("aboutHtmlHost");
 
   ui.webServerHost = document.getElementById("webServerHost");
   ui.webServerPort = document.getElementById("webServerPort");
+  ui.webServerAutoStart = document.getElementById("webServerAutoStart");
   ui.webServerUrl = document.getElementById("webServerUrl");
   ui.networkIpLabel = document.getElementById("networkIpLabel");
   ui.webServerStatusChip = document.getElementById("webServerStatusChip");
@@ -147,6 +149,7 @@ function bindUi() {
   ui.activeTemplateLabel = document.getElementById("activeTemplateLabel");
   ui.udpServerHost = document.getElementById("udpServerHost");
   ui.udpServerPort = document.getElementById("udpServerPort");
+  ui.udpServerAutoStart = document.getElementById("udpServerAutoStart");
   ui.udpServerStatusChip = document.getElementById("udpServerStatusChip");
   ui.udpServerEnabled = document.getElementById("udpServerEnabled");
   ui.udpPacketCount = document.getElementById("udpPacketCount");
@@ -163,6 +166,7 @@ function bindUi() {
     fallbacks: document.getElementById("settingsPaneFallbacks"),
     equalization: document.getElementById("settingsPaneEqualization"),
     plugins: document.getElementById("settingsPanePlugins"),
+    useful: document.getElementById("settingsPaneUseful"),
     templates: document.getElementById("settingsPaneTemplates"),
     devices: document.getElementById("settingsPaneDevices"),
     about: document.getElementById("settingsPaneAbout"),
@@ -396,9 +400,11 @@ function renderConfigInputs() {
 
   ui.webServerHost.value = state.web_server.http_host || "0.0.0.0";
   ui.webServerPort.value = state.web_server.http_port || 8080;
+  ui.webServerAutoStart.checked = !!state.web_server.http_auto_start;
   ui.webServerEnabled.checked = !!state.web_server.http_enabled;
   ui.udpServerHost.value = state.web_server.udp_host || "0.0.0.0";
   ui.udpServerPort.value = state.web_server.udp_port || 28000;
+  ui.udpServerAutoStart.checked = !!state.web_server.udp_auto_start;
   ui.udpServerEnabled.checked = !!state.web_server.udp_enabled;
 
   renderPanelSlots();
@@ -408,6 +414,7 @@ function renderConfigInputs() {
   clearEqualizationForm();
   renderEqualizationList();
   renderSelectedGameUnitHint();
+  renderUsefulInfoList();
   setSettingsTab(activeSettingsTab);
 }
 
@@ -765,6 +772,22 @@ function renderMotionOffsetLabels() {
   ui.motionOffsetZValue.textContent = ui.motionOffsetZ.value;
 }
 
+function renderUsefulInfoList() {
+  ui.usefulInfoList.innerHTML = "";
+  const fields = [...(state.panel_fields || [])].sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
+  fields.forEach((field) => {
+    const item = document.createElement("div");
+    item.className = "fallback-item";
+    item.innerHTML = `
+      <div>
+        <strong>${field.label}</strong>
+        <span><code>${field.key}</code> | ${field.description || "Sem descricao."}</span>
+      </div>
+    `;
+    ui.usefulInfoList.appendChild(item);
+  });
+}
+
 function renderMotionPreview() {
   if (!state.motion_preview) {
     return;
@@ -1064,8 +1087,10 @@ async function saveBasicSettings() {
 
 async function saveWebServerConfig(closeAfter = true) {
   state = await window.pywebview.api.save_web_server_config({
+    http_auto_start: ui.webServerAutoStart.checked,
     http_host: ui.webServerHost.value || "0.0.0.0",
     http_port: Number(ui.webServerPort.value || 8080),
+    udp_auto_start: ui.udpServerAutoStart.checked,
     udp_host: ui.udpServerHost.value || "0.0.0.0",
     udp_port: Number(ui.udpServerPort.value || 28000),
     selected_template: state.web_server.selected_template || "simple-dashboard",

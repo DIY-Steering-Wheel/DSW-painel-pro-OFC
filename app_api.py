@@ -17,6 +17,7 @@ class NewAppApi:
 
     def bootstrap(self) -> dict[str, Any]:
         state = self.bridge.refresh_games()
+        state = self.bridge.ensure_background_services_started()
         if state["basic_settings"].get("detect_open_game_on_start"):
             state = self.bridge.auto_select_active_game()
             selected = state["selected_game"]

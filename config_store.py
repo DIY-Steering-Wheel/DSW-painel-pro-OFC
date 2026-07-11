@@ -174,12 +174,14 @@ class ConfigStore:
             "value_equalization_rules": [],
             "web_server": {
                 "http_enabled": False,
+                "http_auto_start": False,
                 "http_host": "0.0.0.0",
                 "http_port": 8080,
                 "bundle_path": "",
                 "bundle_root": "",
                 "selected_template": "simple-dashboard",
                 "udp_enabled": False,
+                "udp_auto_start": False,
                 "udp_host": "0.0.0.0",
                 "udp_port": 28000,
             },
@@ -212,12 +214,14 @@ class ConfigStore:
     def _merge_web_server_defaults(self, data: dict[str, Any]) -> dict[str, Any]:
         default = {
             "http_enabled": False,
+            "http_auto_start": False,
             "http_host": "0.0.0.0",
             "http_port": 8080,
             "bundle_path": "",
             "bundle_root": "",
             "selected_template": "simple-dashboard",
             "udp_enabled": False,
+            "udp_auto_start": False,
             "udp_host": "0.0.0.0",
             "udp_port": 28000,
         }

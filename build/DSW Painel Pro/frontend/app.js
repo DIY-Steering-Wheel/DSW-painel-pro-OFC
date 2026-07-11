@@ -137,6 +137,7 @@ function bindUi() {
 
   ui.webServerHost = document.getElementById("webServerHost");
   ui.webServerPort = document.getElementById("webServerPort");
+  ui.webServerAutoStart = document.getElementById("webServerAutoStart");
   ui.webServerUrl = document.getElementById("webServerUrl");
   ui.networkIpLabel = document.getElementById("networkIpLabel");
   ui.webServerStatusChip = document.getElementById("webServerStatusChip");
@@ -147,6 +148,7 @@ function bindUi() {
   ui.activeTemplateLabel = document.getElementById("activeTemplateLabel");
   ui.udpServerHost = document.getElementById("udpServerHost");
   ui.udpServerPort = document.getElementById("udpServerPort");
+  ui.udpServerAutoStart = document.getElementById("udpServerAutoStart");
   ui.udpServerStatusChip = document.getElementById("udpServerStatusChip");
   ui.udpServerEnabled = document.getElementById("udpServerEnabled");
   ui.udpPacketCount = document.getElementById("udpPacketCount");
@@ -396,9 +398,11 @@ function renderConfigInputs() {
 
   ui.webServerHost.value = state.web_server.http_host || "0.0.0.0";
   ui.webServerPort.value = state.web_server.http_port || 8080;
+  ui.webServerAutoStart.checked = !!state.web_server.http_auto_start;
   ui.webServerEnabled.checked = !!state.web_server.http_enabled;
   ui.udpServerHost.value = state.web_server.udp_host || "0.0.0.0";
   ui.udpServerPort.value = state.web_server.udp_port || 28000;
+  ui.udpServerAutoStart.checked = !!state.web_server.udp_auto_start;
   ui.udpServerEnabled.checked = !!state.web_server.udp_enabled;
 
   renderPanelSlots();
@@ -1064,8 +1068,10 @@ async function saveBasicSettings() {
 
 async function saveWebServerConfig(closeAfter = true) {
   state = await window.pywebview.api.save_web_server_config({
+    http_auto_start: ui.webServerAutoStart.checked,
     http_host: ui.webServerHost.value || "0.0.0.0",
     http_port: Number(ui.webServerPort.value || 8080),
+    udp_auto_start: ui.udpServerAutoStart.checked,
     udp_host: ui.udpServerHost.value || "0.0.0.0",
     udp_port: Number(ui.udpServerPort.value || 28000),
     selected_template: state.web_server.selected_template || "simple-dashboard",

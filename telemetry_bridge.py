@@ -13,7 +13,7 @@ import psutil
 
 try:
     from .config_store import ConfigStore
-    from .constants import PANEL_FIELDS
+    from .constants import PANEL_FIELDS, panel_field_description
     from .installers import InstallerService
     from .plugin_registry import PluginRegistry
     from .runtime_paths import get_app_base_dir
@@ -21,7 +21,7 @@ try:
     from .web_runtime import WebRuntimeService
 except ImportError:  # pragma: no cover
     from config_store import ConfigStore
-    from constants import PANEL_FIELDS
+    from constants import PANEL_FIELDS, panel_field_description
     from installers import InstallerService
     from plugin_registry import PluginRegistry
     from runtime_paths import get_app_base_dir
@@ -50,7 +50,8 @@ class TelemetryBridge:
         self._thread: threading.Thread | None = None
         self._collector_module = None
         self._stop_event = threading.Event()
-        self._selected_game = self.store.load_selected_game(self.plugins[0]["name"])
+        self._selected_game = self._resolve_selected_game_name(self.store.load_selected_game(self.plugins[0]["name"]))
+        self._save_selected_game_safe(self._selected_game)
         self._installed_games = self.store.load_games(list(self._plugin_by_name))
         self._settings = settings
         self._is_collecting = False
@@ -82,7 +83,7 @@ class TelemetryBridge:
             messages = list(self._ui_messages)
 
         selected_plugin = self.plugin_meta(selected)
-        emitted_fields = selected_plugin.get("emitted_fields") or list(telemetry)
+        emitted_fields = self._visible_fields_for_plugin(selected_plugin, telemetry)
         installed_games = self.store.load_games(list(self._plugin_by_name))
         panel_status = self.panel_sender.status(collecting)
         motion_status = self.motion_sender.status(collecting)
@@ -113,7 +114,15 @@ class TelemetryBridge:
             "messages": messages,
             "footer": {"auto_start_enabled": bool(settings.get("auto_start_enabled", False))},
             "panel_config": self.store.load_panel_config(),
-            "panel_fields": [{"key": field.key, "label": field.label, "default": field.default} for field in PANEL_FIELDS],
+            "panel_fields": [
+                {
+                    "key": field.key,
+                    "label": field.label,
+                    "default": field.default,
+                    "description": panel_field_description(field.key, field.label),
+                }
+                for field in PANEL_FIELDS
+            ],
             "motion_config": self.store.load_motion_config(),
             "motion_preview": self.motion_sender.preview(telemetry),
             "basic_settings": settings,
@@ -211,7 +220,7 @@ class TelemetryBridge:
             changed_game = self._selected_game != active_game
             if changed_game:
                 self._selected_game = active_game
-                self.store.save_selected_game(active_game)
+                self._save_selected_game_safe(active_game)
             if not self._is_collecting:
                 self._status_text = self._status_for_game(active_game)
                 self._last_error = ""
@@ -239,7 +248,7 @@ class TelemetryBridge:
                 blocked = True
             else:
                 self._selected_game = game_name
-                self.store.save_selected_game(game_name)
+                self._save_selected_game_safe(game_name)
                 self._status_text = self._status_for_game(game_name)
                 self._last_error = ""
         if blocked:
@@ -289,7 +298,8 @@ class TelemetryBridge:
         return self.snapshot()
 
     def plugin_meta(self, game_name: str) -> dict[str, Any]:
-        return self._plugin_by_name[game_name]
+        resolved_name = self._resolve_selected_game_name(game_name)
+        return self._plugin_by_name[resolved_name]
 
     def set_auto_start(self, enabled: bool) -> dict[str, Any]:
         with self._lock:
@@ -355,6 +365,20 @@ class TelemetryBridge:
 
     def save_web_server_config(self, data: dict[str, Any]) -> dict[str, Any]:
         self.web_runtime.save_config(data)
+        return self.snapshot()
+
+    def ensure_background_services_started(self) -> dict[str, Any]:
+        config = self.store.load_settings().get("web_server", {})
+        if config.get("http_auto_start"):
+            try:
+                self.web_runtime.start_http()
+            except Exception as exc:
+                self._set_error(str(exc))
+        if config.get("udp_auto_start"):
+            try:
+                self.web_runtime.start_udp()
+            except Exception as exc:
+                self._set_error(str(exc))
         return self.snapshot()
 
     def import_template_package(self) -> dict[str, Any]:
@@ -427,7 +451,7 @@ class TelemetryBridge:
                 self._status_text = f"Plugin importado: {', '.join(imported_names)}"
                 if imported_names:
                     self._selected_game = imported_names[0]
-                    self.store.save_selected_game(self._selected_game)
+                    self._save_selected_game_safe(self._selected_game)
             self._push_message("success", "Plugin importado", ", ".join(imported_names))
         except Exception as exc:
             self._set_error(f"Falha ao importar plugin: {exc}")
@@ -471,7 +495,7 @@ class TelemetryBridge:
                 with self._lock:
                     if imported_names:
                         self._selected_game = imported_names[0]
-                        self.store.save_selected_game(self._selected_game)
+                        self._save_selected_game_safe(self._selected_game)
                 message = ", ".join(imported_names) if imported_names else asset_name
                 self._set_status(f"Plugin importado: {message}")
                 self._push_message("success", "Plugin importado do GitHub", message)
@@ -495,7 +519,7 @@ class TelemetryBridge:
             with self._lock:
                 if self._selected_game not in self._plugin_by_name:
                     self._selected_game = self.plugins[0]["name"]
-                    self.store.save_selected_game(self._selected_game)
+                    self._save_selected_game_safe(self._selected_game)
                 self._last_error = ""
                 self._status_text = f"Plugin removido: {removed_name}"
             self._push_message("success", "Plugin removido", removed_name)
@@ -704,9 +728,13 @@ class TelemetryBridge:
         startup_dir.mkdir(parents=True, exist_ok=True)
         launcher = startup_dir / "DSW Painel Pro.cmd"
         old_launcher = startup_dir / "DSW Painel Open Source.cmd"
+        base_dir = get_app_base_dir()
         if enabled:
-            command = f'"{sys.executable}" "{Path.cwd() / "main.py"}"'
-            launcher.write_text(f"@echo off\nstart \"\" {command}\n", encoding="utf-8")
+            if getattr(sys, "frozen", False):
+                command = f"@echo off\ncd /d \"{base_dir}\"\nstart \"\" \"{Path(sys.executable).resolve()}\"\n"
+            else:
+                command = f"@echo off\ncd /d \"{base_dir}\"\nstart \"\" \"{Path(sys.executable).resolve()}\" \"{(base_dir / 'main.py').resolve()}\"\n"
+            launcher.write_text(command, encoding="utf-8")
             if old_launcher.exists() and old_launcher != launcher:
                 old_launcher.unlink()
         elif launcher.exists():
@@ -717,6 +745,48 @@ class TelemetryBridge:
     def _reload_plugins(self) -> None:
         self.plugins = self.registry.refresh()
         self._plugin_by_name = {plugin["name"]: plugin for plugin in self.plugins}
+        self._selected_game = self._resolve_selected_game_name(self._selected_game)
+
+    def _save_selected_game_safe(self, game_name: str) -> None:
+        try:
+            self.store.save_selected_game(game_name)
+        except OSError:
+            pass
+
+    def _resolve_selected_game_name(self, game_name: str) -> str:
+        if game_name in self._plugin_by_name:
+            return game_name
+
+        aliases = {
+            "Farming Simulator": self._preferred_farming_plugin_name(),
+        }
+        resolved = aliases.get(game_name)
+        if resolved in self._plugin_by_name:
+            return resolved
+        return self.plugins[0]["name"]
+
+    def _preferred_farming_plugin_name(self) -> str:
+        preferred_names = [
+            "Farming Simulator 25",
+            "Farming Simulator 22",
+            "Farming Simulator 19",
+        ]
+        for name in preferred_names:
+            if name in self._plugin_by_name:
+                return name
+        return self.plugins[0]["name"]
+
+    def _visible_fields_for_plugin(self, plugin: dict[str, Any], telemetry: dict[str, Any]) -> list[str]:
+        fields: list[str] = []
+        for key in plugin.get("emitted_fields") or []:
+            if key not in fields:
+                fields.append(key)
+        for key in plugin.get("available_extra_fields") or []:
+            if key not in fields:
+                fields.append(key)
+        if fields:
+            return fields
+        return list(telemetry)
 
     def _apply_equalization(self, plugin: dict[str, Any], telemetry: dict[str, Any]) -> dict[str, Any]:
         rules = self.store.load_settings().get("value_equalization_rules", [])
