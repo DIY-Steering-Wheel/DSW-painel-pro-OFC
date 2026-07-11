@@ -12,16 +12,32 @@ let dialogOpen = false;
 let dialogResolver = null;
 let aboutTemplateHtml = null;
 let activeModal = null;
+let pollInFlight = false;
 
 window.addEventListener("pywebviewready", async () => {
   bindUi();
   state = await window.pywebview.api.bootstrap();
   render();
-  pollTimer = setInterval(async () => {
-    state = await window.pywebview.api.poll_state();
-    render();
-  }, 500);
+  startPolling();
 });
+
+function startPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+  }
+  pollTimer = setInterval(async () => {
+    if (pollInFlight) {
+      return;
+    }
+    pollInFlight = true;
+    try {
+      state = await window.pywebview.api.poll_state();
+      render();
+    } finally {
+      pollInFlight = false;
+    }
+  }, 150);
+}
 
 function bindUi() {
   ui.gamesList = document.getElementById("gamesList");
@@ -43,6 +59,7 @@ function bindUi() {
   ui.basicSettingsModal = document.getElementById("basicSettingsModal");
   ui.webServerModal = document.getElementById("webServerModal");
   ui.dialogModal = document.getElementById("dialogModal");
+  ui.githubPluginModal = document.getElementById("githubPluginModal");
 
   ui.panelMode = document.getElementById("panelMode");
   ui.panelPort = document.getElementById("panelPort");
@@ -98,8 +115,12 @@ function bindUi() {
   ui.clearFallbackValueBtn = document.getElementById("clearFallbackValueBtn");
   ui.fallbackList = document.getElementById("fallbackList");
   ui.pluginPackagePath = document.getElementById("pluginPackagePath");
+  ui.pluginGithubUrl = document.getElementById("pluginGithubUrl");
+  ui.pluginGithubSummary = document.getElementById("pluginGithubSummary");
   ui.pluginList = document.getElementById("pluginList");
+  ui.githubReleaseList = document.getElementById("githubReleaseList");
   ui.templateZipPath = document.getElementById("templateZipPath");
+  ui.templateZipSummary = document.getElementById("templateZipSummary");
   ui.settingsTemplateList = document.getElementById("settingsTemplateList");
   ui.deviceStatusList = document.getElementById("deviceStatusList");
   ui.aboutHtmlHost = document.getElementById("aboutHtmlHost");
@@ -157,6 +178,10 @@ function bindUi() {
     render();
   });
   document.getElementById("importPluginPackageBtn").addEventListener("click", async () => {
+    if (!state.plugin_manager.selected_package) {
+      await showDialog({ title: "Plugin de jogo", text: "Selecione um ISO ou ZIP antes de importar." });
+      return;
+    }
     state = await window.pywebview.api.import_plugin_package();
     render();
   });
@@ -170,6 +195,16 @@ function bindUi() {
       return;
     }
     state = await window.pywebview.api.import_web_bundle_zip();
+    render();
+  });
+  document.getElementById("openGithubPluginModalBtn").addEventListener("click", () => openModal("githubPlugin"));
+  document.getElementById("loadGithubReleasesBtn").addEventListener("click", async () => {
+    state = await window.pywebview.api.set_plugin_github_url(ui.pluginGithubUrl.value || "");
+    state = await window.pywebview.api.fetch_plugin_github_releases();
+    render();
+  });
+  document.getElementById("clearGithubReleasesBtn").addEventListener("click", async () => {
+    state = await window.pywebview.api.clear_plugin_github_releases();
     render();
   });
 
@@ -218,16 +253,7 @@ function bindUi() {
   ui.dialogConfirmBtn.addEventListener("click", () => resolveDialog(true));
   ui.dialogCancelBtn.addEventListener("click", () => resolveDialog(false));
 
-  document.querySelectorAll("[data-external-url]").forEach((link) => {
-    link.addEventListener("click", async (event) => {
-      event.preventDefault();
-      const url = link.dataset.externalUrl;
-      if (!url || !window.pywebview?.api?.open_external_url) {
-        return;
-      }
-      await window.pywebview.api.open_external_url(url);
-    });
-  });
+  bindExternalLinks(document);
 }
 
 function render() {
@@ -239,6 +265,8 @@ function render() {
   renderTelemetry();
   if (!isEditingConfigModal()) {
     renderConfigs();
+  } else {
+    renderLiveSettingsPanels();
   }
   renderInstallModal();
   renderMotionPreview();
@@ -307,6 +335,11 @@ function renderTelemetry() {
 }
 
 function renderConfigs() {
+  renderConfigInputs();
+  renderLiveSettingsPanels();
+}
+
+function renderConfigInputs() {
   const ports = ['<option value="">Selecione...</option>']
     .concat(state.available_ports.map((port) => `<option value="${port}">${port}</option>`))
     .join("");
@@ -340,8 +373,7 @@ function renderConfigs() {
   ui.launchWithWindows.checked = !!state.basic_settings.launch_with_windows;
   ui.detectOpenGameOnStart.checked = !!state.basic_settings.detect_open_game_on_start;
   fallbackOverridesDraft = { ...(state.basic_settings.fallback_overrides || {}) };
-  ui.pluginPackagePath.value = state.plugin_manager.selected_package || "";
-  ui.templateZipPath.value = state.template_manager.selected_package || "";
+  ui.pluginGithubUrl.value = state.plugin_manager.github_repo_url || "";
 
   ui.webServerHost.value = state.web_server.http_host || "0.0.0.0";
   ui.webServerPort.value = state.web_server.http_port || 8080;
@@ -353,11 +385,17 @@ function renderConfigs() {
   renderPanelSlots();
   renderFallbackEditor();
   renderFallbackList();
+  renderSelectedGameUnitHint();
+  setSettingsTab(activeSettingsTab);
+}
+
+function renderLiveSettingsPanels() {
+  ui.pluginPackagePath.value = state.plugin_manager.selected_package || "";
+  ui.templateZipPath.value = state.template_manager.selected_package || "";
   renderPluginManager();
   renderTemplateCatalog();
   renderDeviceStatuses();
   renderSelectedGameUnitHint();
-  setSettingsTab(activeSettingsTab);
 }
 
 function renderPanelSlots() {
@@ -442,13 +480,17 @@ function renderInstallModal() {
 
 function renderPluginManager() {
   ui.pluginList.innerHTML = "";
+  ui.pluginGithubSummary.textContent = state.plugin_manager.selected_package
+    ? `ZIP/ISO selecionado: ${basename(state.plugin_manager.selected_package)}`
+    : "Você pode importar um pacote local ou buscar releases direto do GitHub.";
   state.plugin_manager.plugins.forEach((plugin) => {
     const item = document.createElement("div");
-    item.className = "plugin-item";
+    const selected = state.selected_game === plugin.name;
+    item.className = `plugin-item ${selected ? "is-selected" : ""}`;
     item.innerHTML = `
       <div class="plugin-meta">
         <strong>${plugin.name}</strong>
-        <span>${plugin.built_in ? "plugin nativo" : "plugin importado"} | ${plugin.requires_install ? "com instalador" : "sem instalador"}</span>
+        <span>${plugin.built_in ? "plugin nativo" : "plugin importado"} | ${plugin.requires_install ? "com instalador" : "sem instalador"} | ${selected ? "selecionado" : "disponivel"}</span>
       </div>
     `;
     const button = document.createElement("button");
@@ -473,10 +515,14 @@ function renderPluginManager() {
     item.appendChild(button);
     ui.pluginList.appendChild(item);
   });
+  renderGithubReleaseCatalog();
 }
 
 function renderTemplateCatalog() {
   ui.settingsTemplateList.innerHTML = "";
+  ui.templateZipSummary.textContent = state.template_manager.selected_package
+    ? `ZIP selecionado: ${basename(state.template_manager.selected_package)}`
+    : "Selecione um ZIP para importar um novo painel HTML.";
   const templates = state.web_server.templates || [];
   if (!templates.length) {
     const empty = document.createElement("div");
@@ -498,7 +544,7 @@ function renderTemplateCatalog() {
         <strong>${template.name}</strong>
         <p>${template.description}</p>
         <p>${template.author} | v${template.version}</p>
-        <p>${template.supports_mobile ? "Pronto para celular" : "Uso geral"}</p>
+        <p>${template.supports_mobile ? "Pronto para celular" : "Uso geral"} | ${state.web_server.selected_template === template.id ? "painel selecionado" : "painel disponivel"}</p>
         ${websiteMarkup}
       </div>
     `;
@@ -537,6 +583,84 @@ function renderTemplateCatalog() {
     card.appendChild(actions);
     ui.settingsTemplateList.appendChild(card);
   });
+}
+
+function renderGithubReleaseCatalog() {
+  ui.githubReleaseList.innerHTML = "";
+  const releaseData = state.plugin_manager.github_release_data || {};
+  const releases = releaseData.releases || [];
+  if (!releases.length) {
+    const empty = document.createElement("div");
+    empty.className = "fallback-item";
+    empty.innerHTML = `<div><strong>Nenhuma release carregada</strong><span>Informe um repositório do GitHub para listar binários e pacotes.</span></div>`;
+    ui.githubReleaseList.appendChild(empty);
+    return;
+  }
+
+  ui.pluginGithubSummary.textContent = `${releaseData.repo_name} | ${releases.length} release(s) carregadas`;
+  releases.forEach((release) => {
+    const card = document.createElement("div");
+    card.className = "release-card";
+    const bodyPreview = (release.body || "").trim().split("\n").filter(Boolean).slice(0, 3).join(" ");
+    card.innerHTML = `
+      <div class="release-head">
+        <div>
+          <strong>${release.name}</strong>
+          <span>${release.tag_name || "sem tag"} | ${formatDateLabel(release.published_at)}${release.prerelease ? " | prerelease" : ""}</span>
+        </div>
+        <a href="${release.html_url}" data-external-url="${release.html_url}" class="btn btn-outline-light btn-sm">Abrir release</a>
+      </div>
+      <p class="form-help">${bodyPreview || "Sem descrição resumida nesta release."}</p>
+    `;
+    const assetList = document.createElement("div");
+    assetList.className = "release-assets";
+
+    if (!release.assets.length) {
+      const emptyAsset = document.createElement("div");
+      emptyAsset.className = "fallback-item";
+      emptyAsset.innerHTML = `<div><strong>Sem binários anexados</strong><span>Esta release não trouxe assets para download.</span></div>`;
+      assetList.appendChild(emptyAsset);
+    }
+
+    release.assets.forEach((asset) => {
+      const item = document.createElement("div");
+      item.className = "release-asset-item";
+      item.innerHTML = `
+        <div>
+          <strong>${asset.name}</strong>
+          <span>${formatBytes(asset.size)} | ${asset.download_count} download(s) | ${asset.is_zip ? "ZIP" : asset.content_type || "arquivo"}</span>
+        </div>
+      `;
+      const actions = document.createElement("div");
+      actions.className = "template-actions";
+      actions.appendChild(createReleaseActionButton("Baixar", asset, "download"));
+      if (asset.is_zip) {
+        actions.appendChild(createReleaseActionButton("Extrair", asset, "extract"));
+        actions.appendChild(createReleaseActionButton("Baixar e importar", asset, "import", "btn btn-danger"));
+      }
+      item.appendChild(actions);
+      assetList.appendChild(item);
+    });
+
+    card.appendChild(assetList);
+    ui.githubReleaseList.appendChild(card);
+  });
+
+  bindExternalLinks(ui.githubReleaseList);
+}
+
+function createReleaseActionButton(label, asset, action, className = "btn btn-outline-light") {
+  const button = document.createElement("button");
+  button.className = className;
+  button.textContent = label;
+  button.addEventListener("click", async () => {
+    state = await window.pywebview.api.download_plugin_release_asset(asset.download_url, asset.name, action);
+    if (action === "import") {
+      closeModals();
+    }
+    render();
+  });
+  return button;
 }
 
 function renderDeviceStatuses() {
@@ -727,6 +851,23 @@ function drawMotionLine(ctx, values, color, width, height) {
     }
   });
   ctx.stroke();
+}
+
+function bindExternalLinks(root) {
+  root.querySelectorAll("[data-external-url]").forEach((link) => {
+    if (link.dataset.externalBound === "true") {
+      return;
+    }
+    link.dataset.externalBound = "true";
+    link.addEventListener("click", async (event) => {
+      event.preventDefault();
+      const url = link.dataset.externalUrl;
+      if (!url || !window.pywebview?.api?.open_external_url) {
+        return;
+      }
+      await window.pywebview.api.open_external_url(url);
+    });
+  });
 }
 
 async function handleMainAction() {
@@ -929,6 +1070,10 @@ function openModal(type) {
     renderConfigs();
     ui.webServerModal.classList.remove("hidden");
   }
+  if (type === "githubPlugin") {
+    renderConfigs();
+    ui.githubPluginModal.classList.remove("hidden");
+  }
 }
 
 function closeModals() {
@@ -940,10 +1085,11 @@ function closeModals() {
   ui.installModal.classList.add("hidden");
   ui.basicSettingsModal.classList.add("hidden");
   ui.webServerModal.classList.add("hidden");
+  ui.githubPluginModal.classList.add("hidden");
 }
 
 function isEditingConfigModal() {
-  return ["panel", "motion", "basic", "webServer"].includes(activeModal);
+  return ["panel", "motion", "basic", "webServer", "githubPlugin"].includes(activeModal);
 }
 
 function getSelectedGame() {
@@ -962,6 +1108,36 @@ function formatDeviceState(stateName) {
     error: "Erro",
   };
   return labels[stateName] || stateName;
+}
+
+function basename(filePath) {
+  return String(filePath || "").split(/[\\/]/).pop() || "";
+}
+
+function formatBytes(size) {
+  const value = Number(size || 0);
+  if (!value) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  let index = 0;
+  let current = value;
+  while (current >= 1024 && index < units.length - 1) {
+    current /= 1024;
+    index += 1;
+  }
+  return `${current.toFixed(current >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function formatDateLabel(value) {
+  if (!value) {
+    return "sem data";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString("pt-BR");
 }
 
 function drainMessages() {

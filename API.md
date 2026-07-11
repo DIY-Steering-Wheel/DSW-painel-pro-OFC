@@ -249,6 +249,63 @@ const data = await response.json();
 
 Depois ele atualiza os campos visuais com `telemetry_rows`, `selected_game`, `status_text` e `is_collecting`.
 
+## Protocolos seriais
+
+Os dois envios seriais sao ASCII simples terminados com quebra de linha `\n`.
+
+### Painel serial
+
+- Baudrate fixo: `115200`
+- Frequencia real: limitada pelo `FPS de envio` configurado no app
+- Formato: lista CSV com a ordem definida na tela `Config. painel`
+
+Exemplo:
+
+```text
+124,3120,3,92,0,1
+```
+
+Regras:
+
+- booleanos saem como `1` ou `0`
+- `None` vira `0`
+- `float` sai arredondado com ate 3 casas
+- a ordem dos campos depende de `panel_config.order`
+
+Para ver exatamente o pacote atual sem abrir a serial, consulte:
+
+```text
+GET /api/panel-values
+```
+
+### Motion serial
+
+- Baudrate configuravel: padrao `115200`
+- Frequencia real: limitada pelo `FPS de envio` configurado no app
+- Formato: `x,y,z\n`
+- Intervalo final esperado: `-100` a `100`
+
+Exemplo:
+
+```text
+12.5,-8.0,54.3
+```
+
+Normalizacao usada hoje:
+
+1. Lê `acceleration_x`, `acceleration_y` e `acceleration_z`
+2. Desliga o eixo se `onoff_invert_*` estiver falso
+3. Inverte o sinal se `phase_invert_*` estiver verdadeiro
+4. Aplica `offset_power_*`
+5. Limita entre `min_value` e `max_value`
+6. Mapeia para a faixa `-100..100`
+
+Para ver o preview atual sem abrir a serial, consulte:
+
+```text
+GET /api/motion-preview
+```
+
 ## Observacoes
 
 - O QR Code do servidor web depende da biblioteca Python `qrcode`.

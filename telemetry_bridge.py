@@ -58,6 +58,8 @@ class TelemetryBridge:
         self._last_error = ""
         self._install_folder = ""
         self._plugin_package_path = ""
+        self._plugin_github_url = ""
+        self._plugin_github_release_data: dict[str, Any] = {"repo_url": "", "repo_name": "", "releases": []}
         self._template_package_path = ""
         self._ui_messages: deque[dict[str, Any]] = deque(maxlen=20)
         self._message_seq = 0
@@ -72,6 +74,8 @@ class TelemetryBridge:
             last_error = self._last_error
             install_folder = self._install_folder
             plugin_package_path = self._plugin_package_path
+            plugin_github_url = self._plugin_github_url
+            plugin_github_release_data = dict(self._plugin_github_release_data)
             template_package_path = self._template_package_path
             settings = dict(self._settings)
             messages = list(self._ui_messages)
@@ -124,6 +128,8 @@ class TelemetryBridge:
             },
             "plugin_manager": {
                 "selected_package": plugin_package_path,
+                "github_repo_url": plugin_github_url,
+                "github_release_data": plugin_github_release_data,
                 "plugins": [
                     {
                         "id": plugin["id"],
@@ -176,10 +182,52 @@ class TelemetryBridge:
                 self._status_text = self._status_for_game(self._selected_game)
         return self.snapshot()
 
+    def auto_manage_active_game(self) -> dict[str, Any]:
+        self.refresh_games()
+        settings = self.store.load_settings()
+        detect_enabled = bool(settings.get("detect_open_game_on_start"))
+        if not detect_enabled:
+            return self.snapshot()
+
+        selected = self.snapshot()["selected_game"]
+        is_collecting = self.snapshot()["is_collecting"]
+        selected_active = self.is_game_active(selected)
+        active_game = self._find_first_active_game()
+
+        if is_collecting and selected_active:
+            return self.snapshot()
+
+        if is_collecting and not selected_active:
+            self.stop_collection(wait=True)
+
+        if active_game is None:
+            return self.snapshot()
+
+        plugin = self.plugin_meta(active_game)
+        installed = "yes" if not plugin["requires_install"] else self.store.load_games(list(self._plugin_by_name)).get(active_game, "no")
+
+        with self._lock:
+            changed_game = self._selected_game != active_game
+            if changed_game:
+                self._selected_game = active_game
+                self.store.save_selected_game(active_game)
+            if not self._is_collecting:
+                self._status_text = self._status_for_game(active_game)
+                self._last_error = ""
+
+        if installed == "yes" and not self.snapshot()["is_collecting"]:
+            self.start_collection()
+            if changed_game:
+                self._push_message("success", "Troca automatica", f"{active_game} foi detectado e iniciado automaticamente.")
+        elif changed_game:
+            self._push_message("success", "Troca automatica", f"{active_game} foi detectado automaticamente.")
+
+        return self.snapshot()
+
     def auto_select_active_game(self) -> dict[str, Any]:
-        for game_name in self._plugin_by_name:
-            if self.is_game_active(game_name):
-                return self.select_game(game_name)
+        active_game = self._find_first_active_game()
+        if active_game is not None:
+            return self.select_game(active_game)
         return self.snapshot()
 
     def select_game(self, game_name: str) -> dict[str, Any]:
@@ -294,6 +342,11 @@ class TelemetryBridge:
             self._plugin_package_path = package_path
         return self.snapshot()
 
+    def set_plugin_github_url(self, repo_url: str) -> dict[str, Any]:
+        with self._lock:
+            self._plugin_github_url = (repo_url or "").strip()
+        return self.snapshot()
+
     def set_template_package_path(self, package_path: str) -> dict[str, Any]:
         with self._lock:
             self._template_package_path = package_path
@@ -309,6 +362,11 @@ class TelemetryBridge:
             imported_names = self.web_runtime.import_template_archive(package_path)
             with self._lock:
                 self._template_package_path = ""
+            imported_templates = self.web_runtime.load_template_catalog()
+            if imported_names:
+                imported = next((item for item in imported_templates if item["name"] == imported_names[0]), None)
+                if imported is not None:
+                    self.web_runtime.save_config({"selected_template": imported["id"]})
             message = ", ".join(imported_names)
             self._set_status(f"Template importado: {message}")
             self._push_message("success", "Template importado", message)
@@ -366,9 +424,64 @@ class TelemetryBridge:
                 self._plugin_package_path = ""
                 self._last_error = ""
                 self._status_text = f"Plugin importado: {', '.join(imported_names)}"
+                if imported_names:
+                    self._selected_game = imported_names[0]
+                    self.store.save_selected_game(self._selected_game)
             self._push_message("success", "Plugin importado", ", ".join(imported_names))
         except Exception as exc:
             self._set_error(f"Falha ao importar plugin: {exc}")
+        return self.snapshot()
+
+    def fetch_plugin_github_releases(self) -> dict[str, Any]:
+        try:
+            repo_url = self.snapshot()["plugin_manager"]["github_repo_url"]
+            release_data = self.registry.fetch_github_releases(repo_url)
+            with self._lock:
+                self._plugin_github_release_data = release_data
+                self._last_error = ""
+            release_count = len(release_data.get("releases", []))
+            self._push_message("success", "GitHub conectado", f"{release_count} releases carregados de {release_data['repo_name']}.")
+        except Exception as exc:
+            with self._lock:
+                self._plugin_github_release_data = {"repo_url": "", "repo_name": "", "releases": []}
+            self._set_error(f"Falha ao consultar releases: {exc}")
+        return self.snapshot()
+
+    def clear_plugin_github_releases(self) -> dict[str, Any]:
+        with self._lock:
+            self._plugin_github_release_data = {"repo_url": "", "repo_name": "", "releases": []}
+        return self.snapshot()
+
+    def download_plugin_release_asset(self, download_url: str, asset_name: str, action: str) -> dict[str, Any]:
+        try:
+            result = self.registry.download_release_asset(download_url, asset_name, action)
+            downloaded_path = result.get("path", "")
+            with self._lock:
+                if action == "download":
+                    self._plugin_package_path = downloaded_path
+                self._last_error = ""
+            if action == "import":
+                self._reload_plugins()
+                games = self.store.load_games(list(self._plugin_by_name))
+                for plugin_name in self._plugin_by_name:
+                    games.setdefault(plugin_name, "no")
+                self.store.save_games(games)
+                imported_names = result.get("imported_names", [])
+                with self._lock:
+                    if imported_names:
+                        self._selected_game = imported_names[0]
+                        self.store.save_selected_game(self._selected_game)
+                message = ", ".join(imported_names) if imported_names else asset_name
+                self._set_status(f"Plugin importado: {message}")
+                self._push_message("success", "Plugin importado do GitHub", message)
+            elif action == "extract":
+                self._set_status(f"Arquivo extraido: {result.get('extract_dir', '')}")
+                self._push_message("success", "Arquivo extraido", result.get("extract_dir", downloaded_path))
+            else:
+                self._set_status(f"Arquivo baixado: {Path(downloaded_path).name}")
+                self._push_message("success", "Download concluido", downloaded_path)
+        except Exception as exc:
+            self._set_error(f"Falha ao baixar asset: {exc}")
         return self.snapshot()
 
     def remove_plugin(self, plugin_id: str) -> dict[str, Any]:
@@ -420,11 +533,14 @@ class TelemetryBridge:
         self._thread = threading.Thread(target=self._collector_loop, daemon=True)
         self._thread.start()
 
-    def stop_collection(self) -> None:
+    def stop_collection(self, wait: bool = False) -> None:
+        thread = self._thread
         with self._lock:
             self._is_collecting = False
             self._status_text = "Parado"
         self._stop_event.set()
+        if wait and thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
 
     def is_game_active(self, game_name: str) -> bool:
         executable_name = self.plugin_meta(game_name).get("process_name")
@@ -443,6 +559,12 @@ class TelemetryBridge:
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
         return False
+
+    def _find_first_active_game(self) -> str | None:
+        for game_name in self._plugin_by_name:
+            if self.is_game_active(game_name):
+                return game_name
+        return None
 
     def _collector_loop(self) -> None:
         selected = self.snapshot()["selected_game"]

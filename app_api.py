@@ -34,7 +34,7 @@ class NewAppApi:
         return state
 
     def poll_state(self) -> dict[str, Any]:
-        return self.bridge.snapshot()
+        return self.bridge.auto_manage_active_game()
 
     def select_game(self, game_name: str) -> dict[str, Any]:
         return self.bridge.select_game(game_name)
@@ -100,6 +100,18 @@ class NewAppApi:
 
     def remove_plugin(self, plugin_id: str) -> dict[str, Any]:
         return self.bridge.remove_plugin(plugin_id)
+
+    def set_plugin_github_url(self, repo_url: str) -> dict[str, Any]:
+        return self.bridge.set_plugin_github_url(repo_url)
+
+    def fetch_plugin_github_releases(self) -> dict[str, Any]:
+        return self.bridge.fetch_plugin_github_releases()
+
+    def clear_plugin_github_releases(self) -> dict[str, Any]:
+        return self.bridge.clear_plugin_github_releases()
+
+    def download_plugin_release_asset(self, download_url: str, asset_name: str, action: str) -> dict[str, Any]:
+        return self.bridge.download_plugin_release_asset(download_url, asset_name, action)
 
     def save_web_server_config(self, data: dict[str, Any]) -> dict[str, Any]:
         return self.bridge.save_web_server_config(data)

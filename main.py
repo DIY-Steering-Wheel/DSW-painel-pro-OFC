@@ -14,7 +14,7 @@ except ImportError:  # pragma: no cover
     from runtime_paths import get_app_base_dir
 
 
-APP_TITLE = "DSW Painel Pro - Valdemir"
+APP_TITLE = "DSW Painel Pro - By Valdemir"
 
 
 def run() -> None:

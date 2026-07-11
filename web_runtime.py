@@ -108,7 +108,7 @@ class WebRuntimeService:
                 resolved_preview = (template_dir / preview_path).resolve()
                 if resolved_preview.exists():
                     preview_uri = resolved_preview.as_uri()
-            built_in = bool(manifest.get("built_in", template_id == "simple-dashboard"))
+            built_in = template_dir.name == "simple-dashboard" or template_id == "simple-dashboard"
             items.append(
                 {
                     "id": template_id,
@@ -160,7 +160,13 @@ class WebRuntimeService:
                     raise RuntimeError(f"Já existe um template na pasta '{folder_name}'.")
                 if template_id in existing_ids:
                     raise RuntimeError(f"Já existe um template com id '{template_id}'.")
-                shutil.copytree(template_dir, self.templates_dir / folder_name)
+                manifest["built_in"] = False
+                target_dir = self.templates_dir / folder_name
+                shutil.copytree(template_dir, target_dir)
+                (target_dir / "manifest.json").write_text(
+                    json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
                 imported_names.append(manifest.get("name") or folder_name)
                 existing_folders.add(folder_name)
                 existing_ids.add(template_id)
