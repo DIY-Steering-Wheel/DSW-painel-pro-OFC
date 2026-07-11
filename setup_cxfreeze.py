@@ -18,8 +18,13 @@ INCLUDE_FILES = [
     ("small_icon.ico", "small_icon.ico"),
     ("API.md", "API.md"),
     ("README.md", "README.md"),
-    ("Versão.json", "Versão.json"),
 ]
+
+for candidate_name in ("Versão.json", "Versao.json", "VersÃ£o.json"):
+    candidate_path = BASE_DIR / candidate_name
+    if candidate_path.exists():
+        INCLUDE_FILES.append((str(candidate_path), candidate_name))
+        break
 
 BUILD_EXE_OPTIONS = {
     "build_exe": str(BUILD_DIR),

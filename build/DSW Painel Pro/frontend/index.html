@@ -245,6 +245,10 @@
             <i class="bi bi-plugin"></i>
             <span>Plugins</span>
           </button>
+          <button class="settings-tab" data-settings-tab="useful">
+            <i class="bi bi-journal-text"></i>
+            <span>Informacoes uteis</span>
+          </button>
           <button class="settings-tab" data-settings-tab="templates">
             <i class="bi bi-layout-text-window"></i>
             <span>Templates HTML</span>
@@ -376,6 +380,21 @@
                 </div>
               </div>
               <div id="pluginList" class="plugin-list"></div>
+            </div>
+          </section>
+
+          <section id="settingsPaneUseful" class="settings-pane">
+            <div class="integration-layout">
+              <div class="card-section integration-card">
+                <div class="motion-chart-head">
+                  <div>
+                    <span class="eyebrow">Referencia</span>
+                    <h3>Variaveis disponiveis</h3>
+                  </div>
+                </div>
+                <p class="form-help">Use esta lista para entender o significado real das variaveis tecnicas exibidas pelo DSW.</p>
+                <div id="usefulInfoList" class="fallback-list"></div>
+              </div>
             </div>
           </section>
 

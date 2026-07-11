@@ -132,6 +132,7 @@ function bindUi() {
   ui.templateZipPath = document.getElementById("templateZipPath");
   ui.templateZipSummary = document.getElementById("templateZipSummary");
   ui.settingsTemplateList = document.getElementById("settingsTemplateList");
+  ui.usefulInfoList = document.getElementById("usefulInfoList");
   ui.deviceStatusList = document.getElementById("deviceStatusList");
   ui.aboutHtmlHost = document.getElementById("aboutHtmlHost");
 
@@ -165,6 +166,7 @@ function bindUi() {
     fallbacks: document.getElementById("settingsPaneFallbacks"),
     equalization: document.getElementById("settingsPaneEqualization"),
     plugins: document.getElementById("settingsPanePlugins"),
+    useful: document.getElementById("settingsPaneUseful"),
     templates: document.getElementById("settingsPaneTemplates"),
     devices: document.getElementById("settingsPaneDevices"),
     about: document.getElementById("settingsPaneAbout"),
@@ -412,6 +414,7 @@ function renderConfigInputs() {
   clearEqualizationForm();
   renderEqualizationList();
   renderSelectedGameUnitHint();
+  renderUsefulInfoList();
   setSettingsTab(activeSettingsTab);
 }
 
@@ -767,6 +770,22 @@ function renderMotionOffsetLabels() {
   ui.motionOffsetXValue.textContent = ui.motionOffsetX.value;
   ui.motionOffsetYValue.textContent = ui.motionOffsetY.value;
   ui.motionOffsetZValue.textContent = ui.motionOffsetZ.value;
+}
+
+function renderUsefulInfoList() {
+  ui.usefulInfoList.innerHTML = "";
+  const fields = [...(state.panel_fields || [])].sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
+  fields.forEach((field) => {
+    const item = document.createElement("div");
+    item.className = "fallback-item";
+    item.innerHTML = `
+      <div>
+        <strong>${field.label}</strong>
+        <span><code>${field.key}</code> | ${field.description || "Sem descricao."}</span>
+      </div>
+    `;
+    ui.usefulInfoList.appendChild(item);
+  });
 }
 
 function renderMotionPreview() {

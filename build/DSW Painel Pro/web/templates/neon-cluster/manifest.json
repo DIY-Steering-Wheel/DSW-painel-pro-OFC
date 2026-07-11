@@ -1,0 +1,12 @@
+{
+  "id": "neon-cluster",
+  "name": "Neon Cluster",
+  "description": "Painel digital futurista com velocidade em destaque, barras e cluster de status.",
+  "author": "DSW Painel Pro",
+  "version": "1.0.0",
+  "entry_html": "index.html",
+  "supports_mobile": true,
+  "built_in": true,
+  "website_label": "Template interno DSW",
+  "website_url": ""
+}

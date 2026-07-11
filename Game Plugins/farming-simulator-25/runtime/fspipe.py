@@ -148,8 +148,9 @@ def _process_message(message: str) -> None:
     if not message:
         return
 
+    message = _normalize_message(message)
     if message.startswith("HEADER"):
-        parts = [part for part in message.split("§")[1:] if part]
+        parts = [part for part in _split_fields(message)[1:] if part]
         indexes: dict[int, str] = {}
         for index, raw_key in enumerate(parts, start=1):
             indexes[index] = _to_snake_case(raw_key)
@@ -160,7 +161,7 @@ def _process_message(message: str) -> None:
     if not message.startswith("BODY"):
         return
 
-    values = message.split("§")
+    values = _split_fields(message)
     with _lock:
         telemetry = dict(_telemetry)
         indexes = dict(_telemetry_indexes)
@@ -192,12 +193,24 @@ def _to_snake_case(value: str) -> str:
     return text.replace("__", "_").lower()
 
 
+def _normalize_message(value: str) -> str:
+    text = (value or "").strip().lstrip("\ufeff")
+    text = text.replace("Ã‚Â¶", "¶")
+    text = text.replace("Â¶", "¶")
+    text = text.replace("Â§", "§")
+    return text
+
+
+def _split_fields(value: str) -> list[str]:
+    return _normalize_message(value).split("§")
+
+
 def _parse_value(key: str, value: str) -> Any:
-    if "¶" in value or "Â¶" in value:
-        separator = "¶" if "¶" in value else "Â¶"
-        values = [item for item in value.split(separator) if item != ""]
+    normalized = _normalize_message(value)
+    if "¶" in normalized:
+        values = [item for item in normalized.split("¶") if item != ""]
         return [_parse_scalar(key, item) for item in values]
-    return _parse_scalar(key, value)
+    return _parse_scalar(key, normalized)
 
 
 def _parse_scalar(key: str, value: str) -> Any:

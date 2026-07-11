@@ -4,13 +4,13 @@
   "icon": "icon.png",
   "requires_install": false,
   "activity_source": "telemetry",
-  "process_name": "ForzaHorizon6.exe",
+  "process_name": "forzahorizon6.exe",
   "process_names": [
-    "ForzaHorizon4.exe",
-    "ForzaHorizon5.exe",
-    "ForzaHorizon6.exe",
-    "ForzaMotorsport7.exe",
-    "ForzaMotorsport.exe"
+    "forzahorizon4.exe",
+    "forzahorizon5.exe",
+    "forzahorizon6.exe",
+    "forzamotorsport7.exe",
+    "forzamotorsport.exe"
   ],
   "telemetry_script": "telemetry.py",
   "emitted_fields": [
