@@ -40,7 +40,10 @@
     "acceleration_y",
     "acceleration_z",
     "raw_speed",
-    "raw_gear"
+    "raw_gear",
+    "socket_error",
+    "last_client",
+    "last_raw_message"
   ],
   "emitted_units": {
     "speed": "KM/H",
@@ -66,21 +69,22 @@
   },
   "setup_tutorial": {
     "title": "Configuracao da telemetria do My Summer Car",
-    "summary": "Instale primeiro o MSC Loader. Depois selecione a pasta Mods do jogo para o DSW copiar o DLL principal e a dependencia para References.",
+    "summary": "Instale primeiro o MSC Loader. Depois selecione a pasta Mods do jogo para o DSW copiar o DLL principal e a dependencia para References. O proprio DSW sobe o servidor WebSocket local esperado pelo mod.",
     "steps": [
       "Instale primeiro o MSC Loader no jogo. Ele e necessario para carregar mods em DLL.",
       "Abra o instalador do DSW para My Summer Car.",
       "Selecione manualmente a pasta Mods do My Summer Car.",
       "Clique em instalar para copiar VehicleTelemetry.dll para Mods e WebSocketSharp.dll para Mods/References.",
+      "No DSW, selecione My Summer Car e inicie a coleta para abrir o servidor WebSocket local na porta 2609.",
       "Abra o jogo com o mod instalado.",
-      "Deixe o mod com o WebSocket local ativo na porta 2609.",
+      "Use `vt_connect` no console do MSC Loader se o mod nao conectar sozinho ao servidor local do DSW.",
       "No DSW, selecione My Summer Car e inicie a coleta.",
       "Se o jogo ja estiver aberto, o DSW pode ficar em aguardando telemetria ate o mod comecar a enviar dados."
     ],
     "notes": [
       "Este plugin depende de um loader de mods para DLL. Sem o MSC Loader a DLL nao sera carregada pelo jogo.",
       "O plugin converte a marcha para o padrao do DSW: re = -1, neutro = 0, primeira = 1 em diante.",
-      "Se nada chegar, confira firewall, se a porta 2609 esta livre e se o mod foi instalado corretamente.",
+      "Se nada chegar, confira firewall, se a porta 2609 esta livre, se o mod foi instalado corretamente e se o comando vt_connect conectou no DSW.",
       "O DSW nao depende do EXE do jogo para iniciar a coleta desse plugin; a validacao real e pela telemetria recebida."
     ]
   }

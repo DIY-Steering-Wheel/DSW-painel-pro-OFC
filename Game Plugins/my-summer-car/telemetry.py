@@ -154,6 +154,11 @@ def collect(settings: dict) -> dict:
         "acceleration_z": round(_float(_first(data, "acceleration_z", "accel_z")), 4),
         "raw_speed": _float(_first(data, "speed", "speedKmh", "speed_kmh")),
         "raw_gear": _first(data, "gear", "currentGear", default=""),
+        "socket_error": str(data.get("socket_error", "") or ""),
+        "last_client": str(data.get("last_client", "") or ""),
+        "last_raw_message": str(data.get("last_raw_message", "") or ""),
+        "_listener_error": str(data.get("socket_error", "") or ""),
+        "_listener_event": str(data.get("_listener_event", "") or ""),
     }
 
 

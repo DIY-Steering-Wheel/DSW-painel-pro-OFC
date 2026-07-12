@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 import socket
 import struct
 import threading
@@ -13,21 +12,31 @@ from urllib.parse import urlparse
 
 
 STALE_TIMEOUT_SECONDS = 2.0
-RECONNECT_DELAY_SECONDS = 2.0
+ACCEPT_TIMEOUT_SECONDS = 0.5
 
-_url = os.getenv("MSC_TELEMETRY_URL", "ws://127.0.0.1:2609")
-_worker_thread: threading.Thread | None = None
+_url = "ws://127.0.0.1:2609"
+_server_thread: threading.Thread | None = None
 _stop_event = threading.Event()
 _lock = threading.Lock()
+_listener: socket.socket | None = None
+_client: socket.socket | None = None
+_client_connected = False
 _last_data: dict[str, Any] = {}
 _last_packet_time = 0.0
 _last_error: str | None = None
+_last_client = ""
+_last_raw_message = ""
+_last_event = "idle"
 
 
 def _default_data() -> dict[str, Any]:
     return {
         "connected": False,
         "socket_error": _last_error,
+        "socket_mode": "server",
+        "last_client": _last_client,
+        "last_raw_message": _last_raw_message,
+        "_listener_event": _last_event,
     }
 
 
@@ -39,157 +48,226 @@ def configure(url: str = "ws://127.0.0.1:2609") -> None:
     if normalized != _url:
         shutdown()
         _url = normalized
-    _ensure_worker()
+    _ensure_server()
 
 
-def _ensure_worker() -> None:
-    global _worker_thread
-    if _worker_thread is not None and _worker_thread.is_alive():
+def _ensure_server() -> None:
+    global _server_thread
+    if _server_thread is not None and _server_thread.is_alive():
         return
     _stop_event.clear()
-    _worker_thread = threading.Thread(target=_worker_loop, daemon=True)
-    _worker_thread.start()
+    _server_thread = threading.Thread(target=_server_loop, daemon=True)
+    _server_thread.start()
 
 
-def _worker_loop() -> None:
-    global _last_error
-    while not _stop_event.is_set():
-        try:
-            _read_forever()
-            _last_error = None
-        except Exception as exc:
-            _last_error = str(exc)
-        if _stop_event.wait(RECONNECT_DELAY_SECONDS):
-            break
-
-
-def _read_forever() -> None:
+def _server_loop() -> None:
+    global _listener, _last_error
     parsed = urlparse(_url)
     if parsed.scheme != "ws":
-        raise RuntimeError(f"Somente ws:// e suportado: {_url}")
+        _last_error = f"Somente ws:// e suportado: {_url}"
+        return
 
     host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 80
-    path = parsed.path or "/"
-    if parsed.query:
-        path = f"{path}?{parsed.query}"
+    port = parsed.port or 2609
+    if host == "localhost":
+        host = "127.0.0.1"
 
-    sock = socket.create_connection((host, port), timeout=3.0)
-    sock.settimeout(1.0)
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
-        _handshake(sock, host, port, path)
+        listener.bind((host, port))
+        listener.listen()
+        listener.settimeout(ACCEPT_TIMEOUT_SECONDS)
+        _listener = listener
+        _last_error = None
         while not _stop_event.is_set():
-            opcode, payload = _recv_frame(sock)
-            if opcode == 0x0:
+            try:
+                conn, address = listener.accept()
+            except socket.timeout:
                 continue
-            if opcode == 0x1:
-                _store_payload(payload.decode("utf-8", errors="replace"))
-            elif opcode == 0x8:
-                _send_frame(sock, 0x8, b"")
-                return
-            elif opcode == 0x9:
-                _send_frame(sock, 0xA, payload)
+            except OSError as exc:
+                if _stop_event.is_set():
+                    break
+                _last_error = str(exc)
+                continue
+            _handle_client(conn, address)
+    except OSError as exc:
+        _last_error = f"Falha ao iniciar servidor WebSocket em {host}:{port}: {exc}"
     finally:
+        _listener = None
         try:
-            sock.close()
+            listener.close()
         except OSError:
             pass
 
 
-def _handshake(sock: socket.socket, host: str, port: int, path: str) -> None:
-    nonce = base64.b64encode(os.urandom(16)).decode("ascii")
-    request = (
-        f"GET {path} HTTP/1.1\r\n"
-        f"Host: {host}:{port}\r\n"
+def _handle_client(conn: socket.socket, address: tuple[str, int]) -> None:
+    global _client, _client_connected, _last_error, _last_client, _last_event
+    conn.settimeout(1.0)
+    _client = conn
+    try:
+        _handshake(conn)
+        _last_error = None
+        _last_client = f"{address[0]}:{address[1]}"
+        _client_connected = True
+        _last_event = "connected"
+        fragmented_opcode: int | None = None
+        fragmented_parts: list[bytes] = []
+        while not _stop_event.is_set():
+            fin, opcode, payload = _recv_frame(conn)
+            if opcode == 0x0:
+                if fragmented_opcode is None:
+                    continue
+                fragmented_parts.append(payload)
+                if not fin:
+                    continue
+                opcode = fragmented_opcode
+                payload = b"".join(fragmented_parts)
+                fragmented_opcode = None
+                fragmented_parts = []
+            elif opcode in {0x1, 0x2} and not fin:
+                fragmented_opcode = opcode
+                fragmented_parts = [payload]
+                continue
+            if opcode in {0x1, 0x2}:
+                _store_payload(payload.decode("utf-8", errors="replace").strip("\x00\r\n\t "), address)
+            elif opcode == 0x8:
+                _send_frame(conn, 0x8, b"")
+                return
+            elif opcode == 0x9:
+                _send_frame(conn, 0xA, payload)
+    except Exception as exc:
+        if not _stop_event.is_set():
+            _last_error = str(exc)
+    finally:
+        if _client is conn:
+            _client = None
+        _client_connected = False
+        if not _stop_event.is_set():
+            _last_event = "waiting_client"
+        try:
+            conn.close()
+        except OSError:
+            pass
+
+
+def _handshake(conn: socket.socket) -> None:
+    request = b""
+    while b"\r\n\r\n" not in request:
+        chunk = conn.recv(4096)
+        if not chunk:
+            raise RuntimeError("Cliente fechou durante o handshake.")
+        request += chunk
+
+    header_text = request.decode("latin1", errors="replace")
+    lines = header_text.split("\r\n")
+    if not lines or "GET " not in lines[0]:
+        raise RuntimeError("Handshake HTTP invalido.")
+
+    headers: dict[str, str] = {}
+    for line in lines[1:]:
+        if ": " not in line:
+            continue
+        key, value = line.split(": ", 1)
+        headers[key.lower()] = value.strip()
+
+    ws_key = headers.get("sec-websocket-key", "")
+    if not ws_key:
+        raise RuntimeError("Cliente nao enviou Sec-WebSocket-Key.")
+
+    accept_value = base64.b64encode(
+        hashlib.sha1((ws_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")).digest()
+    ).decode("ascii")
+    response = (
+        "HTTP/1.1 101 Switching Protocols\r\n"
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n"
-        f"Sec-WebSocket-Key: {nonce}\r\n"
-        "Sec-WebSocket-Version: 13\r\n\r\n"
+        f"Sec-WebSocket-Accept: {accept_value}\r\n\r\n"
     )
-    sock.sendall(request.encode("ascii"))
-
-    response = b""
-    while b"\r\n\r\n" not in response:
-        chunk = sock.recv(4096)
-        if not chunk:
-            raise RuntimeError("Servidor WebSocket fechou durante o handshake.")
-        response += chunk
-
-    header_text = response.decode("latin1", errors="replace")
-    if " 101 " not in header_text and not header_text.startswith("HTTP/1.1 101"):
-        raise RuntimeError(f"Handshake WebSocket invalido: {header_text.splitlines()[0]}")
-
-    expected_accept = base64.b64encode(
-        hashlib.sha1((nonce + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")).digest()
-    ).decode("ascii")
-    if f"Sec-WebSocket-Accept: {expected_accept}" not in header_text:
-        raise RuntimeError("Resposta WebSocket sem chave de validacao esperada.")
+    conn.sendall(response.encode("ascii"))
 
 
-def _recv_exact(sock: socket.socket, size: int) -> bytes:
+def _recv_exact(conn: socket.socket, size: int) -> bytes:
     data = bytearray()
     while len(data) < size:
-        chunk = sock.recv(size - len(data))
+        chunk = conn.recv(size - len(data))
         if not chunk:
             raise RuntimeError("Conexao WebSocket encerrada.")
         data.extend(chunk)
     return bytes(data)
 
 
-def _recv_frame(sock: socket.socket) -> tuple[int, bytes]:
+def _recv_frame(conn: socket.socket) -> tuple[bool, int, bytes]:
     try:
-        header = _recv_exact(sock, 2)
+        header = _recv_exact(conn, 2)
     except socket.timeout:
-        return 0x0, b""
+        return False, 0x0, b""
 
     first, second = header
+    fin = bool(first & 0x80)
     opcode = first & 0x0F
     masked = bool(second & 0x80)
     length = second & 0x7F
 
     if length == 126:
-        length = struct.unpack("!H", _recv_exact(sock, 2))[0]
+        length = struct.unpack("!H", _recv_exact(conn, 2))[0]
     elif length == 127:
-        length = struct.unpack("!Q", _recv_exact(sock, 8))[0]
+        length = struct.unpack("!Q", _recv_exact(conn, 8))[0]
 
-    mask = _recv_exact(sock, 4) if masked else b""
-    payload = _recv_exact(sock, length) if length else b""
+    mask = _recv_exact(conn, 4) if masked else b""
+    payload = _recv_exact(conn, length) if length else b""
     if masked:
         payload = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
-    return opcode, payload
+    return fin, opcode, payload
 
 
-def _send_frame(sock: socket.socket, opcode: int, payload: bytes) -> None:
+def _send_frame(conn: socket.socket, opcode: int, payload: bytes) -> None:
     first = 0x80 | (opcode & 0x0F)
     length = len(payload)
-    mask = os.urandom(4)
     if length < 126:
-        header = bytes([first, 0x80 | length])
+        header = bytes([first, length])
     elif length < 65536:
-        header = bytes([first, 0x80 | 126]) + struct.pack("!H", length)
+        header = bytes([first, 126]) + struct.pack("!H", length)
     else:
-        header = bytes([first, 0x80 | 127]) + struct.pack("!Q", length)
-    masked_payload = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
-    sock.sendall(header + mask + masked_payload)
+        header = bytes([first, 127]) + struct.pack("!Q", length)
+    conn.sendall(header + payload)
 
 
-def _store_payload(message: str) -> None:
-    global _last_data, _last_packet_time, _last_error
-    data = json.loads(message)
+def _store_payload(message: str, address: tuple[str, int]) -> None:
+    global _last_data, _last_packet_time, _last_error, _last_client, _last_raw_message, _last_event
+    _last_raw_message = message[:500]
+    try:
+        data = json.loads(message)
+    except json.JSONDecodeError as exc:
+        _last_error = f"Payload JSON invalido: {exc.msg} na posicao {exc.pos}"
+        _last_event = "listener_error"
+        raise
     with _lock:
         payload = dict(data)
         payload["connected"] = True
+        payload["socket_mode"] = "server"
+        payload["last_client"] = f"{address[0]}:{address[1]}"
+        payload["last_raw_message"] = _last_raw_message
+        payload["_listener_event"] = "receiving"
         _last_data = payload
         _last_packet_time = time.monotonic()
+        _last_client = payload["last_client"]
         _last_error = None
+        _last_event = "receiving"
 
 
 def get() -> dict[str, Any]:
-    _ensure_worker()
+    _ensure_server()
     with _lock:
         if not _last_data or (time.monotonic() - _last_packet_time) > STALE_TIMEOUT_SECONDS:
             data = _default_data()
             data["socket_error"] = _last_error
+            if _last_error:
+                data["_listener_event"] = "listener_error"
+            elif _client_connected:
+                data["_listener_event"] = "connected"
+            else:
+                data["_listener_event"] = _last_event
             return data
         data = dict(_last_data)
         data["socket_error"] = _last_error
@@ -197,14 +275,36 @@ def get() -> dict[str, Any]:
 
 
 def shutdown() -> None:
-    global _worker_thread, _last_data, _last_packet_time, _last_error
+    global _server_thread, _listener, _client, _client_connected, _last_data, _last_packet_time, _last_error, _last_client, _last_raw_message, _last_event
     _stop_event.set()
-    thread = _worker_thread
+
+    listener = _listener
+    if listener is not None:
+        try:
+            listener.close()
+        except OSError:
+            pass
+    _listener = None
+
+    client = _client
+    _client = None
+    _client_connected = False
+    if client is not None:
+        try:
+            client.close()
+        except OSError:
+            pass
+
+    thread = _server_thread
     if thread is not None and thread.is_alive():
         thread.join(timeout=1.0)
-    _worker_thread = None
+    _server_thread = None
+
     with _lock:
         _last_data = {}
         _last_packet_time = 0.0
     _last_error = None
+    _last_client = ""
+    _last_raw_message = ""
+    _last_event = "idle"
     _stop_event.clear()
