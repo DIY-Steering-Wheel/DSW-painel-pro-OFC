@@ -5,6 +5,8 @@ let activeSettingsTab = "general";
 let fallbackOverridesDraft = {};
 let equalizationRulesDraft = [];
 let equalizationSelectedGameIds = [];
+let mergeRulesDraft = [];
+let mergeSelectedGameIds = [];
 let installBusyState = null;
 let qrPreviewVisible = false;
 const motionHistory = [];
@@ -116,7 +118,6 @@ function bindUi() {
   ui.pressureUnit = document.getElementById("pressureUnit");
   ui.temperatureUnit = document.getElementById("temperatureUnit");
   ui.launchWithWindows = document.getElementById("launchWithWindows");
-  ui.minimizeToTray = document.getElementById("minimizeToTray");
   ui.detectOpenGameOnStart = document.getElementById("detectOpenGameOnStart");
   ui.applyGameUnitsBtn = document.getElementById("applyGameUnitsBtn");
   ui.selectedGameUnitsHint = document.getElementById("selectedGameUnitsHint");
@@ -133,6 +134,12 @@ function bindUi() {
   ui.equalizationApplyToAll = document.getElementById("equalizationApplyToAll");
   ui.equalizationGameList = document.getElementById("equalizationGameList");
   ui.equalizationList = document.getElementById("equalizationList");
+  ui.mergeTargetField = document.getElementById("mergeTargetField");
+  ui.mergeSourceField = document.getElementById("mergeSourceField");
+  ui.mergeMode = document.getElementById("mergeMode");
+  ui.mergeApplyToAll = document.getElementById("mergeApplyToAll");
+  ui.mergeGameList = document.getElementById("mergeGameList");
+  ui.mergeList = document.getElementById("mergeList");
   ui.pluginPackagePath = document.getElementById("pluginPackagePath");
   ui.pluginGithubUrl = document.getElementById("pluginGithubUrl");
   ui.pluginGithubSummary = document.getElementById("pluginGithubSummary");
@@ -174,6 +181,7 @@ function bindUi() {
     general: document.getElementById("settingsPaneGeneral"),
     fallbacks: document.getElementById("settingsPaneFallbacks"),
     equalization: document.getElementById("settingsPaneEqualization"),
+    merge: document.getElementById("settingsPaneMerge"),
     plugins: document.getElementById("settingsPanePlugins"),
     useful: document.getElementById("settingsPaneUseful"),
     templates: document.getElementById("settingsPaneTemplates"),
@@ -262,6 +270,9 @@ function bindUi() {
   document.getElementById("addEqualizationBtn").addEventListener("click", addOrUpdateEqualizationRule);
   document.getElementById("clearEqualizationFormBtn").addEventListener("click", clearEqualizationForm);
   ui.equalizationApplyToAll.addEventListener("change", renderEqualizationGameSelector);
+  document.getElementById("addMergeRuleBtn").addEventListener("click", addOrUpdateMergeRule);
+  document.getElementById("clearMergeFormBtn").addEventListener("click", clearMergeForm);
+  ui.mergeApplyToAll.addEventListener("change", renderMergeGameSelector);
   ui.webServerEnabled.addEventListener("change", toggleWebServer);
   ui.udpServerEnabled.addEventListener("change", toggleUdpServer);
   ui.toggleQrPreviewBtn.addEventListener("click", () => {
@@ -398,7 +409,6 @@ function renderConfigInputs() {
   ui.pressureUnit.value = state.basic_settings.pressure_unit;
   ui.temperatureUnit.value = state.basic_settings.temperature_unit;
   ui.launchWithWindows.checked = !!state.basic_settings.launch_with_windows;
-  ui.minimizeToTray.checked = state.basic_settings.minimize_to_tray !== false;
   ui.detectOpenGameOnStart.checked = !!state.basic_settings.detect_open_game_on_start;
   fallbackOverridesDraft = { ...(state.basic_settings.fallback_overrides || {}) };
   equalizationRulesDraft = (state.basic_settings.value_equalization_rules || []).map((rule) => ({
@@ -406,6 +416,11 @@ function renderConfigInputs() {
     game_ids: [...(rule.game_ids || [])],
   }));
   equalizationSelectedGameIds = [];
+  mergeRulesDraft = (state.basic_settings.telemetry_merge_rules || []).map((rule) => ({
+    ...rule,
+    game_ids: [...(rule.game_ids || [])],
+  }));
+  mergeSelectedGameIds = [];
   ui.pluginGithubUrl.value = state.plugin_manager.github_repo_url || "";
 
   ui.webServerHost.value = state.web_server.http_host || "0.0.0.0";
@@ -423,6 +438,9 @@ function renderConfigInputs() {
   renderEqualizationEditor();
   clearEqualizationForm();
   renderEqualizationList();
+  renderMergeEditor();
+  clearMergeForm();
+  renderMergeList();
   renderSelectedGameUnitHint();
   renderUsefulInfoList();
   setSettingsTab(activeSettingsTab);
@@ -1019,6 +1037,91 @@ function renderEqualizationList() {
   });
 }
 
+function renderMergeEditor() {
+  const selectedTargetField = ui.mergeTargetField.value;
+  const selectedSourceField = ui.mergeSourceField.value;
+  [ui.mergeTargetField, ui.mergeSourceField].forEach((select, index) => {
+    const selectedValue = index === 0 ? selectedTargetField : selectedSourceField;
+    select.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = index === 0 ? "Selecione a variavel de destino..." : "Selecione a variavel de origem...";
+    placeholder.selected = !selectedValue;
+    select.appendChild(placeholder);
+    state.panel_fields.forEach((field) => {
+      const option = document.createElement("option");
+      option.value = field.key;
+      option.textContent = `${field.label} (${field.key})`;
+      option.selected = field.key === selectedValue;
+      select.appendChild(option);
+    });
+  });
+  renderMergeGameSelector();
+}
+
+function renderMergeGameSelector() {
+  ui.mergeGameList.innerHTML = "";
+  const disabled = ui.mergeApplyToAll.checked;
+  state.games.forEach((game) => {
+    const label = document.createElement("label");
+    label.className = `form-check switch-card equalization-game-item ${disabled ? "is-disabled" : ""}`;
+    const checked = disabled || mergeSelectedGameIds.includes(game.id);
+    label.innerHTML = `
+      <input class="form-check-input" type="checkbox" value="${game.id}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""}>
+      <span class="form-check-label">${game.name}</span>
+    `;
+    const input = label.querySelector("input");
+    input.addEventListener("change", () => {
+      if (input.checked) {
+        if (!mergeSelectedGameIds.includes(game.id)) {
+          mergeSelectedGameIds.push(game.id);
+        }
+      } else {
+        mergeSelectedGameIds = mergeSelectedGameIds.filter((gameId) => gameId !== game.id);
+      }
+    });
+    ui.mergeGameList.appendChild(label);
+  });
+}
+
+function renderMergeList() {
+  ui.mergeList.innerHTML = "";
+  if (!mergeRulesDraft.length) {
+    const empty = document.createElement("div");
+    empty.className = "fallback-item";
+    empty.innerHTML = `<div><strong>Nenhuma regra configurada</strong><span>Substituicao e mescla so entram em acao quando voce criar uma regra.</span></div>`;
+    ui.mergeList.appendChild(empty);
+    return;
+  }
+
+  mergeRulesDraft.forEach((rule, index) => {
+    const targetField = state.panel_fields.find((item) => item.key === rule.target_field_key);
+    const sourceField = state.panel_fields.find((item) => item.key === rule.source_field_key);
+    const gameNames = rule.apply_to_all
+      ? "Todos os jogos"
+      : (rule.game_ids || [])
+        .map((gameId) => state.games.find((game) => game.id === gameId)?.name || gameId)
+        .join(", ");
+    const item = document.createElement("div");
+    item.className = "fallback-item";
+    item.innerHTML = `
+      <div>
+        <strong>${targetField ? targetField.label : rule.target_field_key} <= ${sourceField ? sourceField.label : rule.source_field_key}</strong>
+        <span>${rule.mode === "merge" ? "Mesclar" : "Substituir"} | ${gameNames || "Nenhum jogo"}</span>
+      </div>
+    `;
+    const button = document.createElement("button");
+    button.className = "btn btn-outline-light";
+    button.textContent = "Remover";
+    button.addEventListener("click", () => {
+      mergeRulesDraft.splice(index, 1);
+      renderMergeList();
+    });
+    item.appendChild(button);
+    ui.mergeList.appendChild(item);
+  });
+}
+
 async function handleMainAction() {
   const selected = getSelectedGame();
   if (selected.installed === "no") {
@@ -1101,10 +1204,10 @@ async function saveBasicSettings() {
     pressure_unit: ui.pressureUnit.value,
     temperature_unit: ui.temperatureUnit.value,
     launch_with_windows: ui.launchWithWindows.checked,
-    minimize_to_tray: ui.minimizeToTray.checked,
     detect_open_game_on_start: ui.detectOpenGameOnStart.checked,
     fallback_overrides: fallbackOverridesDraft,
     value_equalization_rules: equalizationRulesDraft,
+    telemetry_merge_rules: mergeRulesDraft,
   });
   closeModals();
   render();
@@ -1227,8 +1330,50 @@ function clearEqualizationForm(resetApplyToAll = true) {
   ui.equalizationTargetMin.value = "";
   ui.equalizationTargetMax.value = "";
   equalizationSelectedGameIds = [];
-  ui.equalizationApplyToAll.checked = false;
+  ui.equalizationApplyToAll.checked = resetApplyToAll ? false : ui.equalizationApplyToAll.checked;
   renderEqualizationGameSelector();
+}
+
+function addOrUpdateMergeRule() {
+  const targetFieldKey = ui.mergeTargetField.value;
+  const sourceFieldKey = ui.mergeSourceField.value;
+  if (!targetFieldKey || !sourceFieldKey || targetFieldKey === sourceFieldKey) {
+    return;
+  }
+  const applyToAll = ui.mergeApplyToAll.checked;
+  const gameIds = applyToAll ? [] : [...mergeSelectedGameIds].sort();
+  if (!applyToAll && !gameIds.length) {
+    return;
+  }
+
+  const rule = {
+    target_field_key: targetFieldKey,
+    source_field_key: sourceFieldKey,
+    mode: ui.mergeMode.value === "merge" ? "merge" : "replace",
+    apply_to_all: applyToAll,
+    game_ids: gameIds,
+  };
+  const signature = `${rule.target_field_key}|${rule.source_field_key}|${rule.apply_to_all ? "*" : rule.game_ids.join(",")}`;
+  const existingIndex = mergeRulesDraft.findIndex((item) => {
+    const itemSignature = `${item.target_field_key}|${item.source_field_key}|${item.apply_to_all ? "*" : [...(item.game_ids || [])].sort().join(",")}`;
+    return itemSignature === signature;
+  });
+  if (existingIndex >= 0) {
+    mergeRulesDraft[existingIndex] = rule;
+  } else {
+    mergeRulesDraft.push(rule);
+  }
+  renderMergeList();
+  clearMergeForm(false);
+}
+
+function clearMergeForm(resetApplyToAll = true) {
+  ui.mergeTargetField.value = "";
+  ui.mergeSourceField.value = "";
+  ui.mergeMode.value = "replace";
+  mergeSelectedGameIds = [];
+  ui.mergeApplyToAll.checked = resetApplyToAll ? false : ui.mergeApplyToAll.checked;
+  renderMergeGameSelector();
 }
 
 function setInstallBusy(text) {

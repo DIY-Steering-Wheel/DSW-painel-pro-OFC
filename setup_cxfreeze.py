@@ -29,11 +29,10 @@ for candidate_name in ("Versão.json", "Versao.json", "VersÃ£o.json"):
 BUILD_EXE_OPTIONS = {
     "build_exe": str(BUILD_DIR),
     "include_files": INCLUDE_FILES,
-    "packages": ["encodings", "webview", "psutil", "qrcode", "serial", "pythonnet", "clr_loader"],
+    "packages": ["encodings", "webview", "psutil", "qrcode", "serial"],
     "includes": [
         "PIL",
         "runtime_paths",
-        "clr",
         "pywintypes",
         "pythoncom",
         "win32file",

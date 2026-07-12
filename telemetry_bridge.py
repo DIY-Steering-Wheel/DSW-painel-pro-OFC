@@ -641,6 +641,7 @@ class TelemetryBridge:
                 try:
                     telemetry = collector_module.collect(self._collector_settings(plugin))
                     if self._telemetry_payload_is_active(plugin, telemetry):
+                        telemetry = self._apply_merge_rules(plugin, telemetry)
                         telemetry = self._apply_equalization(plugin, telemetry)
                         with self._lock:
                             self._telemetry = telemetry
@@ -866,7 +867,8 @@ class TelemetryBridge:
         return list(telemetry)
 
     def _apply_equalization(self, plugin: dict[str, Any], telemetry: dict[str, Any]) -> dict[str, Any]:
-        rules = self.store.load_settings().get("value_equalization_rules", [])
+        with self._lock:
+            rules = list(self._settings.get("value_equalization_rules", []))
         if not rules:
             return telemetry
 
@@ -904,6 +906,32 @@ class TelemetryBridge:
 
         return result
 
+    def _apply_merge_rules(self, plugin: dict[str, Any], telemetry: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            rules = list(self._settings.get("telemetry_merge_rules", []))
+        if not rules:
+            return telemetry
+
+        result = dict(telemetry)
+        plugin_id = plugin.get("id", "")
+        for rule in rules:
+            if not self._rule_matches_game(rule, plugin_id):
+                continue
+
+            source_field_key = rule.get("source_field_key")
+            target_field_key = rule.get("target_field_key")
+            if source_field_key not in result or not target_field_key:
+                continue
+
+            source_value = result.get(source_field_key)
+            if rule.get("mode") == "merge":
+                target_value = result.get(target_field_key)
+                result[target_field_key] = self._merge_telemetry_values(target_value, source_value)
+            else:
+                result[target_field_key] = source_value
+
+        return result
+
     def _rule_matches_game(self, rule: dict[str, Any], plugin_id: str) -> bool:
         if rule.get("apply_to_all"):
             return True
@@ -916,6 +944,30 @@ class TelemetryBridge:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    def _merge_telemetry_values(self, target_value: Any, source_value: Any) -> Any:
+        if target_value is None:
+            return source_value
+        if source_value is None:
+            return target_value
+
+        if isinstance(target_value, bool) or isinstance(source_value, bool):
+            return bool(target_value) or bool(source_value)
+
+        target_numeric = self._coerce_numeric(target_value)
+        source_numeric = self._coerce_numeric(source_value)
+        if target_numeric is not None and source_numeric is not None:
+            return source_value if abs(source_numeric) >= abs(target_numeric) else target_value
+
+        if isinstance(target_value, str) or isinstance(source_value, str):
+            parts: list[str] = []
+            for value in (target_value, source_value):
+                text = str(value).strip()
+                if text and text not in parts:
+                    parts.append(text)
+            return " | ".join(parts) if parts else ""
+
+        return source_value
 
     def _transform_numeric_value(
         self,

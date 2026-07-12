@@ -170,12 +170,13 @@ class ConfigStore:
             "auto_start_enabled": False,
             "detect_open_game_on_start": False,
             "launch_with_windows": False,
-            "minimize_to_tray": True,
+            "minimize_to_tray": False,
             "speed_unit": "KM/H",
             "pressure_unit": "BAR",
             "temperature_unit": "Celsius",
             "fallback_overrides": {},
             "value_equalization_rules": [],
+            "telemetry_merge_rules": [],
             "web_server": {
                 "http_enabled": False,
                 "http_auto_start": False,
@@ -202,6 +203,7 @@ class ConfigStore:
         if not isinstance(default.get("fallback_overrides"), dict):
             default["fallback_overrides"] = {}
         default["value_equalization_rules"] = self._sanitize_value_equalization(default.get("value_equalization_rules"))
+        default["telemetry_merge_rules"] = self._sanitize_telemetry_merge_rules(default.get("telemetry_merge_rules"))
         if not isinstance(default.get("web_server"), dict):
             default["web_server"] = {}
         default["web_server"] = self._merge_web_server_defaults(default["web_server"])
@@ -211,6 +213,7 @@ class ConfigStore:
         current = self.load_settings()
         current.update(data)
         current["value_equalization_rules"] = self._sanitize_value_equalization(current.get("value_equalization_rules"))
+        current["telemetry_merge_rules"] = self._sanitize_telemetry_merge_rules(current.get("telemetry_merge_rules"))
         current["web_server"] = self._merge_web_server_defaults(current.get("web_server", {}))
         self._write_json(self.settings_path, current)
         return current
@@ -286,6 +289,44 @@ class ConfigStore:
                     "source_max": source_max,
                     "target_min": target_min,
                     "target_max": target_max,
+                    "apply_to_all": bool(rule.get("apply_to_all", False)),
+                    "game_ids": game_ids,
+                }
+            )
+
+        return sanitized
+
+    def _sanitize_telemetry_merge_rules(self, rules: Any) -> list[dict[str, Any]]:
+        if not isinstance(rules, list):
+            return []
+
+        sanitized: list[dict[str, Any]] = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+
+            target_field_key = str(rule.get("target_field_key", "")).strip()
+            source_field_key = str(rule.get("source_field_key", "")).strip()
+            if target_field_key not in PANEL_FIELD_KEYS or source_field_key not in PANEL_FIELD_KEYS:
+                continue
+            if target_field_key == source_field_key:
+                continue
+
+            mode = str(rule.get("mode", "replace")).strip().lower()
+            if mode not in {"replace", "merge"}:
+                mode = "replace"
+
+            game_ids = []
+            for game_id in rule.get("game_ids", []):
+                text = str(game_id).strip()
+                if text and text not in game_ids:
+                    game_ids.append(text)
+
+            sanitized.append(
+                {
+                    "target_field_key": target_field_key,
+                    "source_field_key": source_field_key,
+                    "mode": mode,
                     "apply_to_all": bool(rule.get("apply_to_all", False)),
                     "game_ids": game_ids,
                 }
