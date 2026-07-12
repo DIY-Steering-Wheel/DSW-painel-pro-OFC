@@ -7,9 +7,10 @@ let equalizationRulesDraft = [];
 let equalizationSelectedGameIds = [];
 let mergeRulesDraft = [];
 let mergeSelectedGameIds = [];
+let adjacentDevicesDraft = [];
 let installBusyState = null;
 let qrPreviewVisible = false;
-const deviceCommandDrafts = { panel: "", motion: "" };
+const deviceCommandDrafts = { panel: "", motion: "", "adjacent:1": "", "adjacent:2": "", "adjacent:3": "", "adjacent:4": "" };
 const motionHistory = [];
 const shownMessageIds = new Set();
 const dialogQueue = [];
@@ -172,6 +173,7 @@ function bindUi() {
   ui.templateZipPath = document.getElementById("templateZipPath");
   ui.templateZipSummary = document.getElementById("templateZipSummary");
   ui.settingsTemplateList = document.getElementById("settingsTemplateList");
+  ui.adjacentDevicesList = document.getElementById("adjacentDevicesList");
   ui.usefulInfoList = document.getElementById("usefulInfoList");
   ui.deviceStatusList = document.getElementById("deviceStatusList");
   ui.aboutHtmlHost = document.getElementById("aboutHtmlHost");
@@ -209,6 +211,7 @@ function bindUi() {
     plugins: document.getElementById("settingsPanePlugins"),
     useful: document.getElementById("settingsPaneUseful"),
     templates: document.getElementById("settingsPaneTemplates"),
+    adjacent: document.getElementById("settingsPaneAdjacent"),
     devices: document.getElementById("settingsPaneDevices"),
     about: document.getElementById("settingsPaneAbout"),
   };
@@ -458,6 +461,7 @@ function renderConfigInputs() {
     game_ids: [...(rule.game_ids || [])],
   }));
   mergeSelectedGameIds = [];
+  adjacentDevicesDraft = (state.basic_settings.adjacent_devices || []).map((device, index) => normalizeAdjacentDeviceDraft(device, index));
   ui.pluginGithubUrl.value = state.plugin_manager.github_repo_url || "";
 
   ui.webServerHost.value = state.web_server.http_host || "0.0.0.0";
@@ -478,6 +482,7 @@ function renderConfigInputs() {
   renderMergeEditor();
   clearMergeForm();
   renderMergeList();
+  renderAdjacentDevices();
   renderSelectedGameUnitHint();
   renderUsefulInfoList();
   setSettingsTab(activeSettingsTab);
@@ -795,7 +800,11 @@ function renderDeviceStatuses() {
   const currentDrafts = { ...deviceCommandDrafts };
   
   ui.deviceStatusList.innerHTML = "";
-  const devices = [state.device_status?.panel, state.device_status?.motion].filter(Boolean);
+  const devices = [
+    state.device_status?.panel,
+    state.device_status?.motion,
+    ...((state.device_status?.adjacent || [])),
+  ].filter(Boolean);
   if (!devices.length) {
     return;
   }
@@ -863,6 +872,162 @@ function renderDeviceStatuses() {
     }
     ui.deviceStatusList.appendChild(item);
   });
+}
+
+function normalizeAdjacentDeviceDraft(device, index) {
+  return {
+    slot: Number(device?.slot || index + 1),
+    enabled: !!device?.enabled,
+    name: device?.name || `Dispositivo ${index + 1}`,
+    port: device?.port || "",
+    baudrate: Number(device?.baudrate || 115200),
+    fps: Number(device?.fps || 20),
+    append_newline: device?.append_newline !== false,
+    preset_id: device?.preset_id || "custom",
+    script: String(device?.script || ""),
+  };
+}
+
+function getAdjacentPresetMap() {
+  return Object.fromEntries((state.adjacent_device_presets || []).map((preset) => [preset.id, preset]));
+}
+
+function renderAdjacentDevices() {
+  if (!ui.adjacentDevicesList) {
+    return;
+  }
+  const presetMap = getAdjacentPresetMap();
+  const statusMap = Object.fromEntries(((state.device_status?.adjacent) || []).map((item) => [item.slot, item]));
+  const portsMarkup = ['<option value="">Selecione...</option>']
+    .concat(state.available_ports.map((port) => `<option value="${port}">${port}</option>`))
+    .join("");
+
+  ui.adjacentDevicesList.innerHTML = "";
+  adjacentDevicesDraft.forEach((device, index) => {
+    const slot = index + 1;
+    const status = statusMap[slot] || {};
+    const presetOptions = (state.adjacent_device_presets || []).map((preset) => `
+      <option value="${preset.id}" ${preset.id === device.preset_id ? "selected" : ""}>${preset.name}</option>
+    `).join("");
+    const card = document.createElement("div");
+    card.className = "adjacent-device-card";
+    card.innerHTML = `
+      <div class="device-status-head">
+        <strong>Slot ${slot}</strong>
+        <span class="telemetry-chip">${formatDeviceState(status.state || (device.enabled ? "ready" : "disabled"))}</span>
+      </div>
+      <div class="adjacent-card-grid">
+        <label class="form-check form-switch switch-card switch-card-wide adjacent-enable-row">
+          <input class="form-check-input" type="checkbox" role="switch" data-adjacent-field="enabled" ${device.enabled ? "checked" : ""}>
+          <span class="form-check-label">Ativar envio deste dispositivo</span>
+        </label>
+        <label class="form-label">Nome</label>
+        <input class="form-control" type="text" data-adjacent-field="name" value="${escapeHtml(device.name)}" maxlength="60">
+        <label class="form-label">Porta serial</label>
+        <select class="form-select" data-adjacent-field="port">${portsMarkup}</select>
+        <label class="form-label">Baudrate</label>
+        <input class="form-control" type="number" data-adjacent-field="baudrate" value="${device.baudrate}" min="300" max="3000000">
+        <label class="form-label">FPS de envio</label>
+        <input class="form-control" type="number" data-adjacent-field="fps" value="${device.fps}" min="1" max="120">
+        <label class="form-label">Preset</label>
+        <div class="adjacent-inline-row">
+          <select class="form-select" data-adjacent-field="preset_id">${presetOptions}</select>
+          <button class="btn btn-outline-light" type="button" data-adjacent-action="load-preset">Carregar preset</button>
+        </div>
+        <label class="form-check form-switch switch-card switch-card-wide">
+          <input class="form-check-input" type="checkbox" role="switch" data-adjacent-field="append_newline" ${device.append_newline ? "checked" : ""}>
+          <span class="form-check-label">Adicionar quebra de linha no final</span>
+        </label>
+      </div>
+      <div class="adjacent-script-tools">
+        <div class="adjacent-inline-row">
+          <select class="form-select" data-adjacent-insert="variable">
+            ${(state.panel_fields || []).map((field) => `<option value="${field.key}">${field.key}</option>`).join("")}
+          </select>
+          <button class="btn btn-outline-light" type="button" data-adjacent-action="insert-variable">Inserir variavel</button>
+          <button class="btn btn-outline-light" type="button" data-adjacent-action="insert-helpers">Inserir helpers</button>
+        </div>
+        <textarea class="form-control adjacent-script-editor" data-adjacent-field="script" spellcheck="false">${escapeHtml(device.script)}</textarea>
+      </div>
+      <p class="form-help">${escapeHtml(presetMap[device.preset_id]?.description || "Script customizavel em Lua.")}</p>
+      <div class="device-status-meta">
+        <span>Porta: ${status.port || device.port || "nao configurada"}</span>
+        <span>Baudrate: ${status.baudrate || device.baudrate}</span>
+        <span>FPS: ${device.fps}</span>
+        <span>Pacotes enviados: ${status.packets_sent || 0}</span>
+        <span>Ultimo OK: ${status.last_success_at || "-"}</span>
+      </div>
+      <p class="form-help">${escapeHtml(status.message || "Pronto para usar. O script deve atribuir o resultado final em exit.")}</p>
+    `;
+
+    const portSelect = card.querySelector('[data-adjacent-field="port"]');
+    portSelect.value = device.port || "";
+
+    card.querySelectorAll("[data-adjacent-field]").forEach((field) => {
+      field.addEventListener("input", () => updateAdjacentDraft(index, field));
+      field.addEventListener("change", () => updateAdjacentDraft(index, field));
+    });
+
+    const scriptField = card.querySelector('[data-adjacent-field="script"]');
+    card.querySelector('[data-adjacent-action="load-preset"]').addEventListener("click", () => {
+      const presetId = card.querySelector('[data-adjacent-field="preset_id"]').value || "custom";
+      const preset = presetMap[presetId];
+      if (!preset) {
+        return;
+      }
+      adjacentDevicesDraft[index].preset_id = preset.id;
+      adjacentDevicesDraft[index].script = preset.script;
+      if (!adjacentDevicesDraft[index].name || adjacentDevicesDraft[index].name.startsWith("Dispositivo")) {
+        adjacentDevicesDraft[index].name = preset.name;
+      }
+      renderAdjacentDevices();
+    });
+    card.querySelector('[data-adjacent-action="insert-variable"]').addEventListener("click", () => {
+      const variable = card.querySelector('[data-adjacent-insert="variable"]').value || "speed";
+      insertIntoTextarea(scriptField, variable);
+      adjacentDevicesDraft[index].script = scriptField.value;
+    });
+    card.querySelector('[data-adjacent-action="insert-helpers"]').addEventListener("click", () => {
+      insertIntoTextarea(scriptField, "\n-- clamp(valor, min, max)\n-- map_range(valor, in_min, in_max, out_min, out_max)\n-- bool_num(valor)\n-- round(valor)\n");
+      adjacentDevicesDraft[index].script = scriptField.value;
+    });
+
+    ui.adjacentDevicesList.appendChild(card);
+  });
+}
+
+function updateAdjacentDraft(index, field) {
+  const key = field.dataset.adjacentField;
+  if (!key || !adjacentDevicesDraft[index]) {
+    return;
+  }
+  if (field.type === "checkbox") {
+    adjacentDevicesDraft[index][key] = field.checked;
+    return;
+  }
+  if (key === "baudrate" || key === "fps") {
+    adjacentDevicesDraft[index][key] = Number(field.value || (key === "baudrate" ? 115200 : 20));
+    return;
+  }
+  adjacentDevicesDraft[index][key] = field.value;
+}
+
+function insertIntoTextarea(textarea, text) {
+  const start = textarea.selectionStart || 0;
+  const end = textarea.selectionEnd || 0;
+  const current = textarea.value || "";
+  textarea.value = current.slice(0, start) + text + current.slice(end);
+  const nextPos = start + text.length;
+  textarea.focus();
+  textarea.setSelectionRange(nextPos, nextPos);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 function renderFallbackEditor() {
@@ -1307,18 +1472,27 @@ async function saveMotionConfig() {
 }
 
 async function saveBasicSettings() {
-  state = await window.pywebview.api.save_basic_settings({
-    speed_unit: ui.speedUnit.value,
-    pressure_unit: ui.pressureUnit.value,
-    temperature_unit: ui.temperatureUnit.value,
-    launch_with_windows: ui.launchWithWindows.checked,
-    detect_open_game_on_start: ui.detectOpenGameOnStart.checked,
-    fallback_overrides: fallbackOverridesDraft,
-    value_equalization_rules: equalizationRulesDraft,
-    telemetry_merge_rules: mergeRulesDraft,
-  });
-  closeModals();
-  render();
+  try {
+    state = await window.pywebview.api.save_basic_settings({
+      speed_unit: ui.speedUnit.value,
+      pressure_unit: ui.pressureUnit.value,
+      temperature_unit: ui.temperatureUnit.value,
+      launch_with_windows: ui.launchWithWindows.checked,
+      detect_open_game_on_start: ui.detectOpenGameOnStart.checked,
+      fallback_overrides: fallbackOverridesDraft,
+      value_equalization_rules: equalizationRulesDraft,
+      telemetry_merge_rules: mergeRulesDraft,
+      adjacent_devices: adjacentDevicesDraft.map((device, index) => ({
+        ...device,
+        slot: index + 1,
+        port: device.port || null,
+      })),
+    });
+    closeModals();
+    render();
+  } catch (error) {
+    await showDialog({ title: "Lua / Serial", text: error.message || "Falha ao salvar os dispositivos adjacentes." });
+  }
 }
 
 async function exportPanelConfig() {
@@ -1572,6 +1746,7 @@ function formatDeviceState(stateName) {
     not_configured: "Sem porta",
     port_missing: "Porta ausente",
     serial_unavailable: "Sem PySerial",
+    lua_unavailable: "Sem Lua",
     error: "Erro",
   };
   return labels[stateName] || stateName;

@@ -28,6 +28,7 @@ def _quote_vbs_command_part(value: str) -> str:
     return text
 
 try:
+    from .adjacent_devices import AdjacentDevicesManager
     from .config_store import ConfigStore
     from .constants import PANEL_FIELDS, panel_field_description
     from .installers import InstallerService
@@ -36,6 +37,7 @@ try:
     from .serial_services import MotionSender, PanelSender, build_telemetry_rows
     from .web_runtime import WebRuntimeService
 except ImportError:  # pragma: no cover
+    from adjacent_devices import AdjacentDevicesManager
     from config_store import ConfigStore
     from constants import PANEL_FIELDS, panel_field_description
     from installers import InstallerService
@@ -52,6 +54,7 @@ class TelemetryBridge:
         self.registry = PluginRegistry(self.base_dir)
         self.panel_sender = PanelSender(self.store)
         self.motion_sender = MotionSender(self.store)
+        self.adjacent_devices = AdjacentDevicesManager(self.store)
         self.installer = InstallerService(self.base_dir, self.registry)
         self.web_runtime = WebRuntimeService(self.store, self.api_payload)
         self.plugins = self.registry.load_plugins()
@@ -108,6 +111,7 @@ class TelemetryBridge:
         motion_status = self.motion_sender.status(collecting)
         panel_status["kind"] = "panel"
         motion_status["kind"] = "motion"
+        adjacent_status = self.adjacent_devices.status_list(collecting)
         active_process_names = self._active_process_names()
 
         games = []
@@ -148,10 +152,12 @@ class TelemetryBridge:
             "motion_config": self.store.load_motion_config(),
             "motion_preview": self.motion_sender.preview(telemetry),
             "basic_settings": settings,
+            "adjacent_device_presets": self.adjacent_devices.preset_catalog(),
             "available_ports": self.panel_sender.list_ports(),
             "device_status": {
                 "panel": panel_status,
                 "motion": motion_status,
+                "adjacent": adjacent_status,
             },
             "install_modal": {
                 "selected_folder": install_folder,
@@ -329,6 +335,8 @@ class TelemetryBridge:
         return self.snapshot()
 
     def save_basic_settings(self, data: dict[str, Any]) -> dict[str, Any]:
+        if "adjacent_devices" in data:
+            self.adjacent_devices.validate_configs(data.get("adjacent_devices") or [])
         with self._lock:
             self._settings = self.store.save_settings(data)
             self.speed_unit = self._settings["speed_unit"]
@@ -381,6 +389,10 @@ class TelemetryBridge:
             elif device_type == "motion":
                 self.motion_sender.send_command(text)
                 device_label = "Motion"
+            elif device_type.startswith("adjacent:"):
+                slot_index = int(device_type.split(":", 1)[1]) - 1
+                self.adjacent_devices.send_command(slot_index, text)
+                device_label = f"Adjacente {slot_index + 1}"
             else:
                 raise RuntimeError("Dispositivo serial desconhecido.")
             self._set_status(f"Comando enviado para {device_label.lower()}.")
@@ -616,6 +628,7 @@ class TelemetryBridge:
     def stop_collection(self, wait: bool = False) -> None:
         thread = self._thread
         collector_module = self._collector_module
+        self._thread = None
         with self._lock:
             self._is_collecting = False
             self._status_text = "Parado"
@@ -629,8 +642,23 @@ class TelemetryBridge:
             except Exception:
                 pass
         self._collector_module = None
+        self.adjacent_devices.shutdown()
         self.motion_sender.send_defaults(force=True)
         self.panel_sender.send_defaults(force=True)
+
+    def shutdown(self) -> None:
+        self.stop_collection(wait=True)
+        self.panel_sender.shutdown()
+        self.motion_sender.shutdown()
+        self.adjacent_devices.shutdown()
+        try:
+            self.web_runtime.stop_http()
+        except Exception:
+            pass
+        try:
+            self.web_runtime.stop_udp()
+        except Exception:
+            pass
 
     def is_game_active(self, game_name: str, active_process_names: set[str] | None = None) -> bool:
         plugin = self.plugin_meta(game_name)
@@ -684,6 +712,7 @@ class TelemetryBridge:
                             self._last_error = ""
                         self.motion_sender.send(telemetry)
                         self.panel_sender.send(telemetry)
+                        self.adjacent_devices.send(telemetry, True)
                     else:
                         listener_error = str(telemetry.get("_listener_error", "") or "")
                         listener_event = str(telemetry.get("_listener_event", "") or "")
@@ -701,9 +730,11 @@ class TelemetryBridge:
                         if recently_active and self._last_active_telemetry:
                             self.motion_sender.send(self._last_active_telemetry)
                             self.panel_sender.send(self._last_active_telemetry)
+                            self.adjacent_devices.send(self._last_active_telemetry, True)
                         else:
                             self.motion_sender.send_defaults()
                             self.panel_sender.send_defaults()
+                            self.adjacent_devices.send({}, False)
                     time.sleep(0.02)
                 except Exception as exc:
                     self._set_error(f"Erro ao coletar telemetria: {exc}")

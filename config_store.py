@@ -7,8 +7,10 @@ import threading
 from typing import Any
 
 try:
+    from .adjacent_devices import build_default_adjacent_devices
     from .constants import DEFAULT_PANEL_ORDER, PANEL_FIELD_KEYS, PANEL_LABEL_TO_KEY
 except ImportError:  # pragma: no cover
+    from adjacent_devices import build_default_adjacent_devices
     from constants import DEFAULT_PANEL_ORDER, PANEL_FIELD_KEYS, PANEL_LABEL_TO_KEY
 
 
@@ -222,6 +224,7 @@ class ConfigStore:
             "fallback_overrides": {},
             "value_equalization_rules": [],
             "telemetry_merge_rules": [],
+            "adjacent_devices": build_default_adjacent_devices(),
             "web_server": {
                 "http_enabled": False,
                 "http_auto_start": False,
@@ -249,6 +252,7 @@ class ConfigStore:
             default["fallback_overrides"] = {}
         default["value_equalization_rules"] = self._sanitize_value_equalization(default.get("value_equalization_rules"))
         default["telemetry_merge_rules"] = self._sanitize_telemetry_merge_rules(default.get("telemetry_merge_rules"))
+        default["adjacent_devices"] = self._sanitize_adjacent_devices(default.get("adjacent_devices"))
         if not isinstance(default.get("web_server"), dict):
             default["web_server"] = {}
         default["web_server"] = self._merge_web_server_defaults(default["web_server"])
@@ -259,6 +263,7 @@ class ConfigStore:
         current.update(data)
         current["value_equalization_rules"] = self._sanitize_value_equalization(current.get("value_equalization_rules"))
         current["telemetry_merge_rules"] = self._sanitize_telemetry_merge_rules(current.get("telemetry_merge_rules"))
+        current["adjacent_devices"] = self._sanitize_adjacent_devices(current.get("adjacent_devices"))
         current["web_server"] = self._merge_web_server_defaults(current.get("web_server", {}))
         self._write_json(self.settings_path, current)
         return current
@@ -389,6 +394,31 @@ class ConfigStore:
                     "game_ids": game_ids,
                 }
             )
+
+        return sanitized
+
+    def _sanitize_adjacent_devices(self, devices: Any) -> list[dict[str, Any]]:
+        defaults = build_default_adjacent_devices()
+        sanitized: list[dict[str, Any]] = []
+        incoming = devices if isinstance(devices, list) else []
+
+        for index in range(4):
+            current = dict(defaults[index])
+            candidate = incoming[index] if index < len(incoming) and isinstance(incoming[index], dict) else {}
+            current.update(candidate)
+            current["slot"] = index + 1
+            current["enabled"] = bool(current.get("enabled", False))
+            name = str(current.get("name", "") or "").strip()
+            current["name"] = name[:60] if name else defaults[index]["name"]
+            port = current.get("port")
+            current["port"] = str(port).strip() if port not in {None, ""} else None
+            current["baudrate"] = self._sanitize_baudrate(current.get("baudrate", 115200))
+            current["fps"] = self._sanitize_fps(current.get("fps", 20))
+            current["append_newline"] = bool(current.get("append_newline", True))
+            current["preset_id"] = str(current.get("preset_id", defaults[index]["preset_id"]) or "custom").strip() or "custom"
+            script = str(current.get("script", defaults[index]["script"]) or "")
+            current["script"] = script.replace("\r\n", "\n").replace("\r", "\n")
+            sanitized.append(current)
 
         return sanitized
 

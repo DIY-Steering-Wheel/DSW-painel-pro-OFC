@@ -49,6 +49,7 @@ def main() -> int:
         "--include-data-files=" + str(BASE_DIR / "README.md") + "=README.md",
         "--include-module=serial",
         "--include-module=serial.tools.list_ports_windows",
+        "--include-package=lupa",
         "--nofollow-import-to=tkinter,test,pytest,PyQt6",
         "--enable-plugin=pyqt5",
         "main.py",

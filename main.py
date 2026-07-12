@@ -38,6 +38,8 @@ def run() -> None:
             hidden=False,
             background_color="#111111",
         )
+        window.events.closing += api.shutdown
+        window.events.closed += api.shutdown
         webview.start(_bootstrap_windows_ui, args=(window,), debug=False)
     finally:
         _release_single_instance()

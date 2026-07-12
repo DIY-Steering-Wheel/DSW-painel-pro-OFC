@@ -37,6 +37,10 @@ class NewAppApi:
     def poll_state(self) -> dict[str, Any]:
         return self.bridge.auto_manage_active_game()
 
+    def shutdown(self) -> bool:
+        self.bridge.shutdown()
+        return True
+
     def select_game(self, game_name: str) -> dict[str, Any]:
         return self.bridge.select_game(game_name)
 

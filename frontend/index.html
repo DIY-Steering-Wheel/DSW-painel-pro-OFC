@@ -274,6 +274,10 @@
             <i class="bi bi-layout-text-window"></i>
             <span>Templates HTML</span>
           </button>
+          <button class="settings-tab" data-settings-tab="adjacent">
+            <i class="bi bi-usb-drive"></i>
+            <span>Dispositivos adjacentes</span>
+          </button>
           <button class="settings-tab" data-settings-tab="devices">
             <i class="bi bi-usb-symbol"></i>
             <span>Status dispositivos</span>
@@ -489,6 +493,22 @@
                 </div>
                 <div id="settingsTemplateList" class="template-catalog"></div>
               </div>
+            </div>
+          </section>
+
+          <section id="settingsPaneAdjacent" class="settings-pane">
+            <div class="integration-layout">
+              <div class="card-section integration-card">
+                <div class="motion-chart-head">
+                  <div>
+                    <span class="eyebrow">Lua + Serial</span>
+                    <h3>Dispositivos adjacentes</h3>
+                  </div>
+                </div>
+                <p class="form-help">Configure de 1 a 4 dispositivos seriais. Cada script deve gerar a linha final em <code>exit</code>. Variaveis de telemetria ficam prontas no escopo Lua, como <code>speed</code>, <code>engine_rpm</code>, <code>brake</code>, <code>clutch</code>, <code>abs</code> e tambem em <code>telemetry.speed</code>.</p>
+                <p class="form-help">Helpers disponiveis: <code>clamp()</code>, <code>map_range()</code>, <code>bool_num()</code> e <code>round()</code>. Os presets abaixo ja trazem exemplos de vento, vibrador de embreagem e vibrador de freio ABS.</p>
+              </div>
+              <div id="adjacentDevicesList" class="adjacent-devices-grid"></div>
             </div>
           </section>
 

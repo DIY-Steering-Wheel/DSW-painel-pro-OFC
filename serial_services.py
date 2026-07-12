@@ -54,6 +54,9 @@ class _SerialPortMixin:
             except Exception:
                 pass
 
+    def shutdown(self) -> None:
+        self._close_serial()
+
 
 class PanelSender(_SerialPortMixin):
     def __init__(self, store: ConfigStore) -> None:
