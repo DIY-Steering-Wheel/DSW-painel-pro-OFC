@@ -2,7 +2,7 @@
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "Valdemir"
 #define MyAppExeName "DSW Painel Pro.exe"
-#define MyBuildDir "build\\DSW Painel Pro"
+#define MyBuildDir "build_nuitka\\DSW Painel Pro.dist"
 
 [Setup]
 AppId={{A4A5A96B-0875-4E35-B8DA-B1A1BF9378B8}
