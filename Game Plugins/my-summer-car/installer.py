@@ -4,7 +4,10 @@ import shutil
 from pathlib import Path
 
 
-MOD_FILES = ("websocket-sharp.dll",)
+MOD_FILES = (
+    ("VehicleTelemetry.dll", Path("VehicleTelemetry.dll")),
+    ("websocket-sharp.dll", Path("References") / "WebSocketSharp.dll"),
+)
 
 
 def search_default_folder():
@@ -15,24 +18,25 @@ def install(folder, plugin_dir: Path):
     mods_dir = Path(folder)
     mods_dir.mkdir(parents=True, exist_ok=True)
     copied = []
-    for name in MOD_FILES:
-        source = plugin_dir / "payload" / name
+    for source_name, relative_target in MOD_FILES:
+        source = plugin_dir / "payload" / source_name
         if not source.exists():
             raise RuntimeError(f"Arquivo do mod nao encontrado: {source}")
-        target = mods_dir / name
+        target = mods_dir / relative_target
+        target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-        copied.append(name)
-    return f"DLL copiada para a pasta Mods: {', '.join(copied)}."
+        copied.append(str(relative_target))
+    return "Arquivos do mod copiados: " + ", ".join(copied) + "."
 
 
 def uninstall(folder, plugin_dir: Path):
     mods_dir = Path(folder)
     removed = []
-    for name in MOD_FILES:
-        target = mods_dir / name
+    for _source_name, relative_target in MOD_FILES:
+        target = mods_dir / relative_target
         if target.exists():
             target.unlink()
-            removed.append(name)
+            removed.append(str(relative_target))
     if removed:
-        return f"DLL removida da pasta Mods: {', '.join(removed)}."
+        return "Arquivos removidos: " + ", ".join(removed) + "."
     return "Nenhuma DLL do My Summer Car foi encontrada para remover."

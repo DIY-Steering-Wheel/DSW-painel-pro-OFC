@@ -57,8 +57,8 @@
     "allow_auto_search": false,
     "allow_manual_select": true,
     "title": "Instalar mod My Summer Car",
-    "description": "Selecione a pasta Mods do My Summer Car. O DSW copia a DLL do mod para dentro dela.",
-    "success_message": "DLL do My Summer Car instalada com sucesso."
+    "description": "Selecione a pasta Mods do My Summer Car. O DSW copia o VehicleTelemetry.dll para Mods e o WebSocketSharp.dll para Mods/References.",
+    "success_message": "Arquivos do My Summer Car instalados com sucesso."
   },
   "telemetry": {
     "protocol": "WebSocket",
@@ -66,12 +66,12 @@
   },
   "setup_tutorial": {
     "title": "Configuracao da telemetria do My Summer Car",
-    "summary": "Instale primeiro o MSC Loader. Depois selecione a pasta Mods do jogo para o DSW copiar a DLL do mod de telemetria.",
+    "summary": "Instale primeiro o MSC Loader. Depois selecione a pasta Mods do jogo para o DSW copiar o DLL principal e a dependencia para References.",
     "steps": [
       "Instale primeiro o MSC Loader no jogo. Ele e necessario para carregar mods em DLL.",
       "Abra o instalador do DSW para My Summer Car.",
       "Selecione manualmente a pasta Mods do My Summer Car.",
-      "Clique em instalar para copiar a DLL do mod que esta dentro do plugin.",
+      "Clique em instalar para copiar VehicleTelemetry.dll para Mods e WebSocketSharp.dll para Mods/References.",
       "Abra o jogo com o mod instalado.",
       "Deixe o mod com o WebSocket local ativo na porta 2609.",
       "No DSW, selecione My Summer Car e inicie a coleta.",
