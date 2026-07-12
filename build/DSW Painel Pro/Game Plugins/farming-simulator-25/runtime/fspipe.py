@@ -10,6 +10,8 @@ from typing import Any
 
 INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
 ERROR_PIPE_CONNECTED = 535
+ERROR_PIPE_BUSY = 231
+ERROR_MORE_DATA = 234
 BUFFER_SIZE = 4096
 MAX_INSTANCES = 10
 PIPE_ACCESS_INBOUND = 0x00000001
@@ -128,14 +130,17 @@ def _read_message(handle: int) -> str | None:
         buffer = ctypes.create_string_buffer(BUFFER_SIZE)
         read = wintypes.DWORD()
         success = _kernel32.ReadFile(handle, buffer, BUFFER_SIZE, ctypes.byref(read), None)
+        if read.value:
+            chunks.append(buffer.raw[: read.value].decode("utf-8", errors="ignore"))
         if not success:
             error = ctypes.get_last_error()
+            if error == ERROR_MORE_DATA:
+                continue
             if error in {109, 232, 233}:
                 return None
             return None
         if read.value == 0:
             return None
-        chunks.append(buffer.raw[: read.value].decode("utf-8", errors="ignore"))
         if read.value < BUFFER_SIZE:
             break
     if not chunks:
@@ -266,5 +271,7 @@ def _poke_pipe() -> None:
         )
         if handle not in (None, INVALID_HANDLE_VALUE):
             _kernel32.CloseHandle(handle)
+        elif ctypes.get_last_error() == ERROR_PIPE_BUSY:
+            return
     except Exception:
         pass

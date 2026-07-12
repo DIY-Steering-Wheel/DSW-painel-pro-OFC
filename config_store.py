@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import threading
 from typing import Any
 
 try:
@@ -35,6 +36,8 @@ class ConfigStore:
         self.legacy_motion_path = Path("config.json")
         self.legacy_games_path = self.legacy_dir / "games_installation.json"
         self.legacy_selection_path = self.legacy_dir / "selected_game.json"
+        self._json_cache: dict[Path, tuple[int, float, Any]] = {}
+        self._cache_lock = threading.Lock()
 
     def load_panel_config(self) -> dict[str, Any]:
         if self.panel_path.exists():
@@ -289,16 +292,40 @@ class ConfigStore:
 
         return sanitized
 
+    def _read_json(self, path: Path) -> dict[str, Any]:
+        stat = path.stat()
+        cache_key = path.resolve()
+        signature = (stat.st_size, stat.st_mtime)
+        with self._cache_lock:
+            cached = self._json_cache.get(cache_key)
+            if cached and cached[:2] == signature:
+                cached_value = cached[2]
+                if isinstance(cached_value, dict):
+                    return dict(cached_value)
+                return cached_value
+
+        with path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+
+        with self._cache_lock:
+            self._json_cache[cache_key] = (signature[0], signature[1], data)
+
+        if isinstance(data, dict):
+            return dict(data)
+        return data
+
+    def _write_json(self, path: Path, payload: Any) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+        stat = path.stat()
+        cache_key = path.resolve()
+        with self._cache_lock:
+            self._json_cache[cache_key] = (stat.st_size, stat.st_mtime, payload)
+
     def _coerce_number(self, value: Any) -> float | None:
         try:
             return float(value)
         except (TypeError, ValueError):
             return None
-
-    def _read_json(self, path: Path) -> dict[str, Any]:
-        with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
-
-    def _write_json(self, path: Path, data: dict[str, Any]) -> None:
-        with path.open("w", encoding="utf-8") as handle:
-            json.dump(data, handle, indent=2, ensure_ascii=False)

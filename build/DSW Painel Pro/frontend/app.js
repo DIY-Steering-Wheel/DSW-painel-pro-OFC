@@ -15,6 +15,7 @@ let dialogResolver = null;
 let aboutTemplateHtml = null;
 let activeModal = null;
 let pollInFlight = false;
+const MAIN_POLL_MS = 250;
 
 window.addEventListener("pywebviewready", async () => {
   bindUi();
@@ -25,10 +26,16 @@ window.addEventListener("pywebviewready", async () => {
 
 function startPolling() {
   if (pollTimer) {
-    clearInterval(pollTimer);
+    clearTimeout(pollTimer);
   }
-  pollTimer = setInterval(async () => {
+  scheduleNextPoll();
+}
+
+function scheduleNextPoll() {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(async () => {
     if (pollInFlight) {
+      scheduleNextPoll();
       return;
     }
     pollInFlight = true;
@@ -37,8 +44,9 @@ function startPolling() {
       render();
     } finally {
       pollInFlight = false;
+      scheduleNextPoll();
     }
-  }, 150);
+  }, MAIN_POLL_MS);
 }
 
 function bindUi() {

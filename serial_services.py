@@ -17,19 +17,53 @@ except ImportError:  # pragma: no cover
     from constants import PANEL_FIELDS, PANEL_FIELDS_BY_KEY
 
 
-class PanelSender:
+class _SerialPortMixin:
+    def __init__(self) -> None:
+        self._port_cache: tuple[float, list[str]] = (0.0, [])
+        self._serial_conn = None
+        self._serial_target: tuple[str, int] | None = None
+
+    def list_ports(self) -> list[str]:
+        if serial is None:
+            return []
+        now = time.monotonic()
+        cached_at, cached_ports = self._port_cache
+        if now - cached_at < 1.0:
+            return list(cached_ports)
+        ports = [port.device for port in serial.tools.list_ports.comports()]
+        self._port_cache = (now, ports)
+        return list(ports)
+
+    def _ensure_serial(self, port: str, baudrate: int):
+        target = (port, baudrate)
+        conn = self._serial_conn
+        if conn is not None and getattr(conn, "is_open", False) and self._serial_target == target:
+            return conn
+        self._close_serial()
+        self._serial_conn = serial.Serial(port=port, baudrate=baudrate, timeout=1, write_timeout=1)
+        self._serial_target = target
+        return self._serial_conn
+
+    def _close_serial(self) -> None:
+        conn = self._serial_conn
+        self._serial_conn = None
+        self._serial_target = None
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+class PanelSender(_SerialPortMixin):
     def __init__(self, store: ConfigStore) -> None:
+        super().__init__()
         self.store = store
         self._packets_sent = 0
         self._last_success_at = 0.0
         self._last_error = ""
         self._last_error_at = 0.0
         self._last_dispatch_at = 0.0
-
-    def list_ports(self) -> list[str]:
-        if serial is None:
-            return []
-        return [port.device for port in serial.tools.list_ports.comports()]
 
     def send(self, telemetry: dict[str, Any]) -> None:
         config = self.store.load_panel_config()
@@ -48,18 +82,21 @@ class PanelSender:
     def _send_values(self, values: list[Any], config: dict[str, Any]) -> None:
         port = config.get("port")
         if not port or serial is None:
+            self._close_serial()
             return
         if port not in self.list_ports():
-            self._set_error(f"Porta {port} não encontrada.")
+            self._set_error(f"Porta {port} nao encontrada.")
+            self._close_serial()
             return
         packet = ",".join(map(str, values)) + "\n"
         try:
-            with serial.Serial(port=port, baudrate=115200, timeout=1) as conn:
-                conn.write(packet.encode("utf-8"))
+            conn = self._ensure_serial(port, 115200)
+            conn.write(packet.encode("utf-8"))
             self._packets_sent += 1
             self._last_success_at = time.time()
             self._last_error = ""
         except Exception as exc:
+            self._close_serial()
             self._set_error(str(exc))
 
     def preview_values(self, telemetry: dict[str, Any]) -> list[Any]:
@@ -106,16 +143,16 @@ class PanelSender:
         now = time.time()
         if serial is None:
             state = "serial_unavailable"
-            message = "PySerial não está disponível."
+            message = "PySerial nao esta disponivel."
         elif not port:
             state = "not_configured"
             message = "Nenhuma porta serial configurada."
         elif port not in ports:
             state = "port_missing"
-            message = f"Porta {port} não encontrada."
+            message = f"Porta {port} nao encontrada."
         elif not enabled:
             state = "disabled"
-            message = "Envio desligado nas configurações."
+            message = "Envio desligado nas configuracoes."
         elif self._last_error and self._last_error_at >= self._last_success_at:
             state = "error"
             message = self._last_error
@@ -128,7 +165,7 @@ class PanelSender:
                 message = "Aguardando novo envio de telemetria."
             else:
                 state = "sending"
-                message = "Comunicação serial OK."
+                message = "Comunicacao serial OK."
         else:
             state = "ready"
             message = "Porta detectada, aguardando primeiro envio."
@@ -162,8 +199,9 @@ class PanelSender:
         return time.strftime("%H:%M:%S", time.localtime(value))
 
 
-class MotionSender:
+class MotionSender(_SerialPortMixin):
     def __init__(self, store: ConfigStore) -> None:
+        super().__init__()
         self.store = store
         self._packets_sent = 0
         self._last_success_at = 0.0
@@ -174,6 +212,7 @@ class MotionSender:
     def send(self, telemetry: dict[str, Any]) -> None:
         config = self.store.load_motion_config()
         if not config.get("is_sending"):
+            self._close_serial()
             return
         if not self._can_dispatch(float(config.get("fps", 20))):
             return
@@ -182,6 +221,7 @@ class MotionSender:
     def send_defaults(self, force: bool = False) -> None:
         config = self.store.load_motion_config()
         if not config.get("is_sending"):
+            self._close_serial()
             return
         if not force and not self._can_dispatch(float(config.get("fps", 20))):
             return
@@ -190,25 +230,23 @@ class MotionSender:
     def _send_axes(self, telemetry: dict[str, Any], config: dict[str, Any]) -> None:
         port = config.get("port")
         if not port or serial is None:
+            self._close_serial()
             return
         if port not in self.list_ports():
-            self._set_error(f"Porta {port} não encontrada.")
+            self._set_error(f"Porta {port} nao encontrada.")
+            self._close_serial()
             return
         x, y, z = self._normalize_axes(telemetry, config)
         packet = f"{x},{y},{z}\n"
         try:
-            with serial.Serial(port=port, baudrate=int(config["baudrate"]), timeout=1) as conn:
-                conn.write(packet.encode("utf-8"))
+            conn = self._ensure_serial(port, int(config["baudrate"]))
+            conn.write(packet.encode("utf-8"))
             self._packets_sent += 1
             self._last_success_at = time.time()
             self._last_error = ""
         except Exception as exc:
+            self._close_serial()
             self._set_error(str(exc))
-
-    def list_ports(self) -> list[str]:
-        if serial is None:
-            return []
-        return [port.device for port in serial.tools.list_ports.comports()]
 
     def preview(self, telemetry: dict[str, Any]) -> dict[str, dict[str, float]]:
         config = self.store.load_motion_config()
@@ -268,16 +306,16 @@ class MotionSender:
         now = time.time()
         if serial is None:
             state = "serial_unavailable"
-            message = "PySerial não está disponível."
+            message = "PySerial nao esta disponivel."
         elif not port:
             state = "not_configured"
             message = "Nenhuma porta serial configurada."
         elif port not in ports:
             state = "port_missing"
-            message = f"Porta {port} não encontrada."
+            message = f"Porta {port} nao encontrada."
         elif not enabled:
             state = "disabled"
-            message = "Envio desligado nas configurações."
+            message = "Envio desligado nas configuracoes."
         elif self._last_error and self._last_error_at >= self._last_success_at:
             state = "error"
             message = self._last_error
@@ -290,7 +328,7 @@ class MotionSender:
                 message = "Aguardando novo envio de telemetria."
             else:
                 state = "sending"
-                message = "Comunicação serial OK."
+                message = "Comunicacao serial OK."
         else:
             state = "ready"
             message = "Porta detectada, aguardando primeiro envio."

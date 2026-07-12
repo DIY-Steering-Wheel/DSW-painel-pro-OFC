@@ -1148,6 +1148,10 @@ function setSignal(element, active) {
   element.classList.toggle("is-on", !!active);
 }
 
+function signalValue(values, ...keys) {
+  return keys.some((key) => !!values[key]);
+}
+
 async function loadState() {
   try {
     const response = await fetch("/api/state");
@@ -1181,12 +1185,12 @@ function render(data) {
   node.brakeBar.style.width = `${toPercent(values.brake)}%`;
   node.clutchBar.style.width = `${toPercent(values.clutch)}%`;
 
-  setSignal(node.signalEngine, values.engine_enabled);
-  setSignal(node.signalLights, values.lights_low_beam || values.lights_high_beam || values.lights_parking);
-  setSignal(node.signalBrake, values.park_brake || values.brake > 0.05);
-  setSignal(node.signalCruise, values.cruise_control);
-  setSignal(node.signalLeft, values.blinker_left_active);
-  setSignal(node.signalRight, values.blinker_right_active);
+  setSignal(node.signalEngine, signalValue(values, "engine_enabled", "electric_enabled"));
+  setSignal(node.signalLights, signalValue(values, "lights_low_beam", "lights_high_beam", "lights_parking"));
+  setSignal(node.signalBrake, signalValue(values, "park_brake") || Number(values.brake || 0) > 0.05);
+  setSignal(node.signalCruise, signalValue(values, "cruise_control"));
+  setSignal(node.signalLeft, signalValue(values, "blinker_left_active", "blinker_left_enabled", "hazard_warning_lights", "hazard_on"));
+  setSignal(node.signalRight, signalValue(values, "blinker_right_active", "blinker_right_enabled", "hazard_warning_lights", "hazard_on"));
 }
 
 loadState();

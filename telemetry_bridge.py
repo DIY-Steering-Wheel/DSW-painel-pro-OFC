@@ -87,6 +87,7 @@ class TelemetryBridge:
         installed_games = self.store.load_games(list(self._plugin_by_name))
         panel_status = self.panel_sender.status(collecting)
         motion_status = self.motion_sender.status(collecting)
+        active_process_names = self._active_process_names()
 
         games = []
         for plugin in self.plugins:
@@ -99,7 +100,7 @@ class TelemetryBridge:
                     "icon": plugin["icon"],
                     "requires_install": plugin["requires_install"],
                     "installed": installed,
-                    "is_active_process": self.is_game_active(game_name),
+                    "is_active_process": self.is_game_active(game_name, active_process_names),
                     "selected": game_name == selected,
                 }
             )
@@ -573,27 +574,33 @@ class TelemetryBridge:
         self.motion_sender.send_defaults(force=True)
         self.panel_sender.send_defaults(force=True)
 
-    def is_game_active(self, game_name: str) -> bool:
+    def is_game_active(self, game_name: str, active_process_names: set[str] | None = None) -> bool:
         plugin = self.plugin_meta(game_name)
         if self._telemetry_reports_activity(plugin):
             return True
         expected_names = self._expected_process_names(plugin)
         if not expected_names:
             return False
+        process_names = active_process_names if active_process_names is not None else self._active_process_names()
+        return any(process_name in expected_names for process_name in process_names)
+
+    def _find_first_active_game(self) -> str | None:
+        active_process_names = self._active_process_names()
+        for game_name in self._plugin_by_name:
+            if self.is_game_active(game_name, active_process_names):
+                return game_name
+        return None
+
+    def _active_process_names(self) -> set[str]:
+        names: set[str] = set()
         for process in psutil.process_iter(["name"]):
             try:
                 process_name = (process.info["name"] or "").lower()
-                if process_name in expected_names:
-                    return True
+                if process_name:
+                    names.add(process_name)
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
-        return False
-
-    def _find_first_active_game(self) -> str | None:
-        for game_name in self._plugin_by_name:
-            if self.is_game_active(game_name):
-                return game_name
-        return None
+        return names
 
     def _collector_loop(self) -> None:
         selected = self.snapshot()["selected_game"]
