@@ -7,16 +7,18 @@ FSContext = {
 	PipeControl = {
 		Pipe = nil,
 		PipeName = "\\\\.\\pipe\\fssimx",
-		RefreshRate = 300,
-		RefreshCurrent = -1
+		HeaderPending = true
 	},
 	Telemetry = {}
 };
 
-function FSTelemetry:ini()
+function FSTelemetry:loadMap(name)
 	FSTelemetry:ClearGameTelemetry();
 	FSTelemetry:ClearVehicleTelemetry();
-	print("inicia")
+end
+
+function FSTelemetry:ini()
+	FSTelemetry:loadMap(nil);
 end
 
 function FSTelemetry:update(dt)
@@ -228,7 +230,12 @@ end
 
 function FSTelemetry:ProcessFuelLevelAndCapacity(vehicle)
 	--TODO: GET CURRENT FILL TYPE
-	local fuelFillType = vehicle:getConsumerFillUnitIndex(FillType.DIESEL)
+	local fuelFillType = vehicle.getConsumerFillUnitIndex ~= nil and vehicle:getConsumerFillUnitIndex(FillType.DIESEL) or nil
+	if fuelFillType == nil then
+		FSContext.Telemetry.FuelMax = 0;
+		FSContext.Telemetry.Fuel = 0;
+		return;
+	end
 	if vehicle.getFillUnitCapacity ~= nil then
 		FSContext.Telemetry.FuelMax = vehicle:getFillUnitCapacity(fuelFillType);
 	else
@@ -357,27 +364,51 @@ function FSTelemetry:ProcessGameData()
 	end
 end
 
+function FSTelemetry:GetOrderedTelemetryKeys()
+	local keys = {};
+	for key, _ in pairs(FSContext.Telemetry) do
+		table.insert(keys, key);
+	end
+	table.sort(keys);
+	return keys;
+end
+
 function  FSTelemetry:BuildHeaderText()
 	local text = FSTelemetry:AddText("HEADER", "");
-	for k, v in pairs(FSContext.Telemetry) do
-		text = FSTelemetry:AddText(k, text);
+	for _, key in ipairs(FSTelemetry:GetOrderedTelemetryKeys()) do
+		text = FSTelemetry:AddText(key, text);
 	end
 	return text;
 end 
 
 function FSTelemetry:BuildBodyText()
 	local text = FSTelemetry:AddText("BODY", "");
-	for key, value in pairs(FSContext.Telemetry) do
-		local type = type(value);
-		if type == "boolean" then
-			text = FSTelemetry:AddTextBoolean(value, text);
-		elseif type == "string" then
-			text = FSTelemetry:AddText(value, text);
-		elseif type =="number" then
-			text = FSTelemetry:AddTextDecimal(value, text);
-		end
+	for _, key in ipairs(FSTelemetry:GetOrderedTelemetryKeys()) do
+		text = FSTelemetry:AddText(FSTelemetry:GetTextValue(FSContext.Telemetry[key]), text);
 	end
 	return text;
+end
+
+function FSTelemetry:GetTextValue(value)
+	local valueType = type(value);
+	if valueType == "boolean" then
+		return value and "1" or "0";
+	elseif valueType == "string" then
+		return value;
+	elseif valueType == "number" then
+		local integerPart, floatPart = math.modf(value);
+		if floatPart > 0 then
+			return string.format("%.2f", value);
+		end
+		return string.format("%d", integerPart);
+	elseif valueType == "table" then
+		local text = "";
+		for _, item in pairs(value) do
+			text = text .. FSTelemetry:GetTextValue(item) .. "Â¶";
+		end
+		return text;
+	end
+	return "";
 end
 
 function FSTelemetry:AddTextDecimal(value, text)
@@ -401,28 +432,33 @@ function FSTelemetry:AddText(value, text)
 end
 
 function FSTelemetry:WriteTelemetry()
-	if FSContext.PipeControl.RefreshCurrent == 0 then
-		FSContext.PipeControl.Pipe:write(FSTelemetry:BuildHeaderText());
-		FSContext.PipeControl.Pipe:flush();
+	if FSContext.PipeControl.Pipe == nil then
+		return;
 	end
 
-	FSContext.PipeControl.Pipe:write(FSTelemetry:BuildBodyText());
-	FSContext.PipeControl.Pipe:flush();
+	local ok = pcall(function()
+		if FSContext.PipeControl.HeaderPending then
+			FSContext.PipeControl.Pipe:write(FSTelemetry:BuildHeaderText());
+			FSContext.PipeControl.Pipe:flush();
+			FSContext.PipeControl.HeaderPending = false;
+		end
+
+		FSContext.PipeControl.Pipe:write(FSTelemetry:BuildBodyText());
+		FSContext.PipeControl.Pipe:flush();
+	end)
+
+	if not ok and FSContext.PipeControl.Pipe ~= nil then
+		pcall(function() FSContext.PipeControl.Pipe:flush(); end)
+		pcall(function() FSContext.PipeControl.Pipe:close(); end)
+		FSContext.PipeControl.Pipe = nil;
+		FSContext.PipeControl.HeaderPending = true;
+	end
 end
 
 function FSTelemetry:RefreshPipe()
-	FSContext.PipeControl.RefreshCurrent = FSContext.PipeControl.RefreshCurrent + 1;
-	if FSContext.PipeControl.RefreshCurrent >= FSContext.PipeControl.RefreshRate then
-		FSContext.PipeControl.RefreshCurrent = 0;
-	end
-
-	if FSContext.PipeControl.RefreshCurrent == 0 then
-		if FSContext.PipeControl.Pipe ~= nil then
-			FSContext.PipeControl.Pipe:flush();
-			FSContext.PipeControl.Pipe:close();
-		end
-
+	if FSContext.PipeControl.Pipe == nil then
 		FSContext.PipeControl.Pipe = io.open(FSContext.PipeControl.PipeName, "w");
+		FSContext.PipeControl.HeaderPending = FSContext.PipeControl.Pipe ~= nil;
 	end	
 end
 

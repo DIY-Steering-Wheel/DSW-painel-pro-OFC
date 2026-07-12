@@ -13,6 +13,19 @@ import psutil
 
 FARM_RECONNECT_GRACE_SECONDS = 5.5
 
+
+def _escape_vbs_string(value: str) -> str:
+    return str(value).replace('"', '""')
+
+
+def _quote_vbs_command_part(value: str) -> str:
+    text = str(value)
+    if not text:
+        return '""'
+    if any(char.isspace() for char in text) or '"' in text:
+        return f'"{text.replace(chr(34), chr(34) * 2)}"'
+    return text
+
 try:
     from .config_store import ConfigStore
     from .constants import PANEL_FIELDS, panel_field_description
@@ -70,6 +83,7 @@ class TelemetryBridge:
         self._about_template_html = self._load_about_template()
         self._last_active_telemetry: dict[str, Any] = {}
         self._last_active_telemetry_at = 0.0
+        self._apply_windows_startup(bool(settings.get("launch_with_windows", False)))
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -773,23 +787,37 @@ class TelemetryBridge:
     def _apply_windows_startup(self, enabled: bool) -> None:
         startup_dir = Path(os.getenv("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
         startup_dir.mkdir(parents=True, exist_ok=True)
-        launcher = startup_dir / "DSW Painel Pro.cmd"
-        old_launcher = startup_dir / "DSW Painel Open Source.cmd"
+        launcher = startup_dir / "DSW Painel Pro.vbs"
+        legacy_launchers = [
+            startup_dir / "DSW Painel Pro.cmd",
+            startup_dir / "DSW Painel Open Source.cmd",
+            startup_dir / "DSW Painel Open Source.vbs",
+        ]
         base_dir = get_app_base_dir()
         if enabled:
+            args = " --tray" if self._settings.get("minimize_to_tray", True) else ""
             if getattr(sys, "frozen", False):
-                args = " --tray" if self._settings.get("minimize_to_tray", True) else ""
-                command = f"@echo off\ncd /d \"{base_dir}\"\nstart \"\" \"{Path(sys.executable).resolve()}\"{args}\n"
+                command_parts = [str(Path(sys.executable).resolve())]
             else:
-                args = " --tray" if self._settings.get("minimize_to_tray", True) else ""
-                command = f"@echo off\ncd /d \"{base_dir}\"\nstart \"\" \"{Path(sys.executable).resolve()}\" \"{(base_dir / 'main.py').resolve()}\"{args}\n"
-            launcher.write_text(command, encoding="utf-8")
-            if old_launcher.exists() and old_launcher != launcher:
-                old_launcher.unlink()
+                command_parts = [str(Path(sys.executable).resolve()), str((base_dir / "main.py").resolve())]
+            if args:
+                command_parts.append(args.strip())
+            command = " ".join(_quote_vbs_command_part(part) for part in command_parts)
+            script = (
+                'Set WshShell = CreateObject("WScript.Shell")\n'
+                f'WshShell.CurrentDirectory = "{_escape_vbs_string(str(base_dir))}"\n'
+                f'WshShell.Run "{_escape_vbs_string(command)}", 0, False\n'
+            )
+            launcher.write_text(script, encoding="utf-8")
+            for legacy_launcher in legacy_launchers:
+                if legacy_launcher.exists() and legacy_launcher != launcher:
+                    legacy_launcher.unlink()
         elif launcher.exists():
             launcher.unlink()
-        if not enabled and old_launcher.exists():
-            old_launcher.unlink()
+        if not enabled:
+            for legacy_launcher in legacy_launchers:
+                if legacy_launcher.exists():
+                    legacy_launcher.unlink()
 
     def _reload_plugins(self) -> None:
         self.plugins = self.registry.refresh()

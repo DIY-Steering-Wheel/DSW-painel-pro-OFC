@@ -32,14 +32,21 @@ class TrayController:
         self.form = None
         self.notify_icon = None
         self.context_menu = None
+        self.tray_timer = None
         self._exit_requested = False
 
     @staticmethod
     def _import_winforms() -> Any:
+        import clr
+
+        clr.AddReference("System.Windows.Forms")
         return importlib.import_module("System.Windows.Forms")
 
     @staticmethod
     def _import_drawing() -> Any:
+        import clr
+
+        clr.AddReference("System.Drawing")
         return importlib.import_module("System.Drawing")
 
     def install(self) -> None:
@@ -58,22 +65,12 @@ class TrayController:
                 return
 
             self.form = form
-            self.notify_icon = forms.NotifyIcon()
-            self.notify_icon.Text = "DSW Painel Pro"
-            self.notify_icon.Icon = self._load_tray_icon(drawing)
-            self.notify_icon.Visible = True
-
-            menu = forms.ContextMenuStrip()
-            self.context_menu = menu
-            open_item = menu.Items.Add("Abrir DSW Painel Pro")
-            exit_item = menu.Items.Add("Fechar DSW Painel Pro")
-            open_item.Click += self._on_open_clicked
-            exit_item.Click += self._on_exit_clicked
-            self.notify_icon.ContextMenuStrip = menu
-            self.notify_icon.DoubleClick += self._on_open_clicked
+            self._ensure_notify_icon(forms=forms, drawing=drawing)
             form.Resize += self._on_form_resize
+            form.SizeChanged += self._on_form_resize
             form.FormClosed += self._on_form_closed
             form.Shown += self._on_form_shown
+            self._install_tray_timer(forms)
 
             if self.start_hidden and self._minimize_to_tray_enabled():
                 self._hide_to_tray(show_tip=False, force_normal_state=True)
@@ -116,6 +113,7 @@ class TrayController:
             return
         try:
             forms = self._import_winforms()
+            self._ensure_notify_icon(forms=forms)
 
             if force_normal_state:
                 self.form.WindowState = forms.FormWindowState.Normal
@@ -145,6 +143,13 @@ class TrayController:
             return
 
     def _dispose_icon(self) -> None:
+        if self.tray_timer is not None:
+            try:
+                self.tray_timer.Stop()
+                self.tray_timer.Dispose()
+            except Exception:
+                pass
+            self.tray_timer = None
         if self.notify_icon is not None:
             try:
                 self.notify_icon.Visible = False
@@ -153,6 +158,51 @@ class TrayController:
                 pass
             self.notify_icon = None
         self.context_menu = None
+
+    def _install_tray_timer(self, forms: Any) -> None:
+        if self.tray_timer is not None:
+            return
+        timer = forms.Timer()
+        timer.Interval = 1000
+        timer.Tick += self._on_tray_timer_tick
+        timer.Start()
+        self.tray_timer = timer
+
+    def _on_tray_timer_tick(self, _sender, _args) -> None:
+        if self._exit_requested or self.form is None:
+            return
+        try:
+            forms = self._import_winforms()
+            self._ensure_notify_icon(forms=forms)
+            if self.form.WindowState == forms.FormWindowState.Minimized and self._minimize_to_tray_enabled():
+                self._hide_to_tray(show_tip=False)
+        except Exception:
+            return
+
+    def _ensure_notify_icon(self, forms: Any | None = None, drawing: Any | None = None) -> None:
+        if self.notify_icon is not None:
+            try:
+                self.notify_icon.Visible = True
+                return
+            except Exception:
+                self.notify_icon = None
+
+        forms = forms or self._import_winforms()
+        drawing = drawing or self._import_drawing()
+        notify_icon = forms.NotifyIcon()
+        notify_icon.Text = "DSW Painel Pro"
+        notify_icon.Icon = self._load_tray_icon(drawing)
+        notify_icon.Visible = True
+
+        menu = forms.ContextMenuStrip()
+        self.context_menu = menu
+        open_item = menu.Items.Add("Abrir DSW Painel Pro")
+        exit_item = menu.Items.Add("Fechar DSW Painel Pro")
+        open_item.Click += self._on_open_clicked
+        exit_item.Click += self._on_exit_clicked
+        notify_icon.ContextMenuStrip = menu
+        notify_icon.DoubleClick += self._on_open_clicked
+        self.notify_icon = notify_icon
 
     def _load_tray_icon(self, drawing: Any) -> Any:
         icon_path = get_app_base_dir() / "app_icon.ico"

@@ -145,7 +145,7 @@ def collect(settings: dict) -> dict:
         "water_temperature": _temperature(_lookup(data, "motor_temperature"), temperature_unit),
         "electric_enabled": _bool(engine_started) or _bool(light_on) or _bool(high_beam) or _bool(beacon_on),
         "engine_enabled": _bool(engine_started),
-        "lights_parking": _bool(light_on),
+        "lights_parking": False,
         "lights_low_beam": _bool(light_on),
         "lights_high_beam": _bool(high_beam),
         "blinker_left_enabled": _bool(_lookup(data, "is_light_turn_left_enabled")),
@@ -193,6 +193,8 @@ def collect(settings: dict) -> dict:
         "weather_next_code": _int(_lookup(data, "weather_next")),
         "current_day": _int(_lookup(data, "day")),
         "game_edition_code": _int(_lookup(data, "game_edition")),
+        "_listener_error": str(_lookup(data, "_listener_error") or ""),
+        "_listener_event": str(_lookup(data, "_listener_event") or ""),
     }
     payload.update(_implements_payload(data))
     return payload
@@ -201,7 +203,10 @@ def collect(settings: dict) -> dict:
 def is_active(settings: dict) -> bool:
     module = _runtime()
     module.configure(str(settings.get("pipe_name", "fssimx")))
-    return bool(module.get().get("connected"))
+    peek = getattr(module, "peek", None)
+    if callable(peek):
+        return bool(peek().get("connected"))
+    return False
 
 
 def shutdown() -> None:

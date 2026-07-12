@@ -7,8 +7,7 @@ local FSContext = {
 	PipeControl = {
 		Pipe = nil,
 		PipeName = "\\\\.\\pipe\\fssimx",
-		RefreshRate = 300,
-		RefreshCurrent = -1
+		HeaderPending = true
 	},
 	MaxDepthImplements = 10,
 	Telemetry = {}
@@ -522,23 +521,32 @@ function FSTelemetry:ProcessGameEdition()
 	FSContext.Telemetry.GameEdition = 19;
 	if g_minModDescVersion == 60 then
 		FSContext.Telemetry.GameEdition = 22;
-	elseif g_minModDescVersion == 90 then
+	elseif g_minModDescVersion >= 90 then
 		FSContext.Telemetry.GameEdition = 25;
 	end
 end
 
+function FSTelemetry:GetOrderedTelemetryKeys()
+	local keys = {};
+	for key, _ in pairs(FSContext.Telemetry) do
+		table.insert(keys, key);
+	end
+	table.sort(keys);
+	return keys;
+end
+
 function  FSTelemetry:BuildHeaderText()
 	local text = FSTelemetry:AddText("HEADER", "");
-	for k, v in pairs(FSContext.Telemetry) do
-		text = FSTelemetry:AddText(k, text);
+	for _, key in ipairs(FSTelemetry:GetOrderedTelemetryKeys()) do
+		text = FSTelemetry:AddText(key, text);
 	end
 	return text;
 end 
 
 function FSTelemetry:BuildBodyText()
 	local text = FSTelemetry:AddText("BODY", "");
-	for key, value in pairs(FSContext.Telemetry) do
-		text = FSTelemetry:AddText(FSTelemetry:GetTextValue(value), text);
+	for _, key in ipairs(FSTelemetry:GetOrderedTelemetryKeys()) do
+		text = FSTelemetry:AddText(FSTelemetry:GetTextValue(FSContext.Telemetry[key]), text);
 	end
 	return text;
 end
@@ -586,34 +594,40 @@ function FSTelemetry:AddText(value, text)
 end
 
 function FSTelemetry:WriteTelemetry()
-	if FSContext.PipeControl.RefreshCurrent == 0 then
-		FSContext.PipeControl.Pipe:write(FSTelemetry:BuildHeaderText());
-		FSContext.PipeControl.Pipe:flush();
+	if FSContext.PipeControl.Pipe == nil then
+		return;
 	end
 
-	FSContext.PipeControl.Pipe:write(FSTelemetry:BuildBodyText());
-	FSContext.PipeControl.Pipe:flush();
+	local ok = pcall(function()
+		if FSContext.PipeControl.HeaderPending then
+			FSContext.PipeControl.Pipe:write(FSTelemetry:BuildHeaderText());
+			FSContext.PipeControl.Pipe:flush();
+			FSContext.PipeControl.HeaderPending = false;
+		end
+
+		FSContext.PipeControl.Pipe:write(FSTelemetry:BuildBodyText());
+		FSContext.PipeControl.Pipe:flush();
+	end)
+
+	if not ok and FSContext.PipeControl.Pipe ~= nil then
+		pcall(function() FSContext.PipeControl.Pipe:flush(); end)
+		pcall(function() FSContext.PipeControl.Pipe:close(); end)
+		FSContext.PipeControl.Pipe = nil;
+		FSContext.PipeControl.HeaderPending = true;
+	end
 end
 
 function FSTelemetry:RefreshPipe()
-	FSContext.PipeControl.RefreshCurrent = FSContext.PipeControl.RefreshCurrent + 1;
-	if FSContext.PipeControl.RefreshCurrent >= FSContext.PipeControl.RefreshRate then
-		FSContext.PipeControl.RefreshCurrent = 0;
-	end
-
-	if FSContext.PipeControl.RefreshCurrent == 0 then
-		if FSContext.PipeControl.Pipe ~= nil then
-			FSContext.PipeControl.Pipe:flush();
-			FSContext.PipeControl.Pipe:close();
-		end
-
+	if FSContext.PipeControl.Pipe == nil then
 		FSContext.PipeControl.Pipe = io.open(FSContext.PipeControl.PipeName, "w");
+		FSContext.PipeControl.HeaderPending = FSContext.PipeControl.Pipe ~= nil;
 	end
 end
 
 function FSTelemetry:GetCurrentVehicle()
+	local player = FSTelemetry:GetCurrentPlayer();
 	if g_minModDescVersion >= 90 then
-		return FSTelemetry:GetCurrentPlayer().getCurrentVehicle();
+		return player ~= nil and player:getCurrentVehicle() or nil;
 	else
 		return g_currentMission.controlledVehicle;
 	end
@@ -621,6 +635,9 @@ end
 
 function FSTelemetry:GetCurrentPlayer()
 	if g_minModDescVersion >= 90 then
+		if g_currentMission == nil or g_currentMission.playerSystem == nil or g_currentMission.playerSystem.playersByUserId == nil then
+			return nil;
+		end
 		return g_currentMission.playerSystem.playersByUserId[g_currentMission.playerUserId];
 	else
 		return g_currentMission.player;

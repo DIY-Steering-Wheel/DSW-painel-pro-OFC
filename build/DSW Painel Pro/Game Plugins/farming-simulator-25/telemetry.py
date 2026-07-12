@@ -7,6 +7,12 @@ from typing import Any
 
 _runtime_module = None
 _IMPLEMENT_LIMIT = 10
+_motion_state = {
+    "initialized": False,
+    "speed_mps": 0.0,
+    "heading_deg": 0.0,
+    "yaw_rate": 0.0,
+}
 
 
 def _runtime():
@@ -99,6 +105,92 @@ def _normalize_gear(gear: Any, reverse: Any) -> int:
     return normalized
 
 
+def _wrap_angle_delta(delta: float) -> float:
+    while delta > 180.0:
+        delta -= 360.0
+    while delta < -180.0:
+        delta += 360.0
+    return delta
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
+
+
+def _derive_motion_axes(speed_kmh: Any, heading_deg: Any, connected: bool, driving_vehicle: bool) -> dict[str, float]:
+    speed_mps = max(0.0, _float(speed_kmh) / 3.6)
+    heading = _float(heading_deg)
+
+    if not connected or not driving_vehicle:
+        _motion_state.update(
+            {
+                "initialized": False,
+                "speed_mps": 0.0,
+                "heading_deg": heading,
+                "yaw_rate": 0.0,
+            }
+        )
+        return {
+            "rotation_x": 0.0,
+            "rotation_y": round(heading, 2),
+            "rotation_z": 0.0,
+            "acceleration_x": 0.0,
+            "acceleration_y": 0.0,
+            "acceleration_z": 0.0,
+        }
+
+    if not _motion_state["initialized"]:
+        _motion_state.update(
+            {
+                "initialized": True,
+                "speed_mps": speed_mps,
+                "heading_deg": heading,
+                "yaw_rate": 0.0,
+            }
+        )
+        return {
+            "rotation_x": 0.0,
+            "rotation_y": round(heading, 2),
+            "rotation_z": 0.0,
+            "acceleration_x": 0.0,
+            "acceleration_y": 0.0,
+            "acceleration_z": 0.0,
+        }
+
+    dt = 0.02
+    previous_speed = float(_motion_state["speed_mps"])
+    previous_heading = float(_motion_state["heading_deg"])
+    previous_yaw_rate = float(_motion_state["yaw_rate"])
+
+    raw_longitudinal = (speed_mps - previous_speed) / dt
+    heading_delta = _wrap_angle_delta(heading - previous_heading)
+    raw_yaw_rate = heading_delta / dt
+    yaw_rate = (previous_yaw_rate * 0.7) + (raw_yaw_rate * 0.3)
+    raw_lateral = speed_mps * yaw_rate * 0.01745329252
+
+    # Converte aceleracoes estimadas para uma faixa amigavel ao motion do DSW.
+    acceleration_x = _clamp(raw_lateral * 8.0, -100.0, 100.0)
+    acceleration_y = _clamp(abs(raw_lateral) * 2.0 + abs(raw_longitudinal) * 1.2, 0.0, 100.0)
+    acceleration_z = _clamp(raw_longitudinal * 7.0, -100.0, 100.0)
+
+    _motion_state.update(
+        {
+            "initialized": True,
+            "speed_mps": speed_mps,
+            "heading_deg": heading,
+            "yaw_rate": yaw_rate,
+        }
+    )
+    return {
+        "rotation_x": 0.0,
+        "rotation_y": round(heading, 2),
+        "rotation_z": round(yaw_rate, 2),
+        "acceleration_x": round(acceleration_x, 3),
+        "acceleration_y": round(acceleration_y, 3),
+        "acceleration_z": round(acceleration_z, 3),
+    }
+
+
 def _implements_payload(data: dict[str, Any]) -> dict[str, Any]:
     positions = _list(_lookup(data, "attached_implements_position"))
     lowered = _list(_lookup(data, "attached_implements_lowered"))
@@ -145,7 +237,7 @@ def collect(settings: dict) -> dict:
         "water_temperature": _temperature(_lookup(data, "motor_temperature"), temperature_unit),
         "electric_enabled": _bool(engine_started) or _bool(light_on) or _bool(high_beam) or _bool(beacon_on),
         "engine_enabled": _bool(engine_started),
-        "lights_parking": _bool(light_on),
+        "lights_parking": False,
         "lights_low_beam": _bool(light_on),
         "lights_high_beam": _bool(high_beam),
         "blinker_left_enabled": _bool(_lookup(data, "is_light_turn_left_enabled")),
@@ -193,7 +285,17 @@ def collect(settings: dict) -> dict:
         "weather_next_code": _int(_lookup(data, "weather_next")),
         "current_day": _int(_lookup(data, "day")),
         "game_edition_code": _int(_lookup(data, "game_edition")),
+        "_listener_error": str(_lookup(data, "_listener_error") or ""),
+        "_listener_event": str(_lookup(data, "_listener_event") or ""),
     }
+    payload.update(
+        _derive_motion_axes(
+            payload["speed"],
+            payload["angle_rotation"],
+            payload["connected"],
+            payload["driving_vehicle"],
+        )
+    )
     payload.update(_implements_payload(data))
     return payload
 
@@ -201,7 +303,10 @@ def collect(settings: dict) -> dict:
 def is_active(settings: dict) -> bool:
     module = _runtime()
     module.configure(str(settings.get("pipe_name", "fssimx")))
-    return bool(module.get().get("connected"))
+    peek = getattr(module, "peek", None)
+    if callable(peek):
+        return bool(peek().get("connected"))
+    return False
 
 
 def shutdown() -> None:
