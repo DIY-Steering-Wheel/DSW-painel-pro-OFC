@@ -285,6 +285,8 @@ def collect(settings: dict) -> dict:
         "weather_next_code": _int(_lookup(data, "weather_next")),
         "current_day": _int(_lookup(data, "day")),
         "game_edition_code": _int(_lookup(data, "game_edition")),
+        "_listener_error": str(_lookup(data, "_listener_error") or ""),
+        "_listener_event": str(_lookup(data, "_listener_event") or ""),
     }
     payload.update(
         _derive_motion_axes(
@@ -301,7 +303,10 @@ def collect(settings: dict) -> dict:
 def is_active(settings: dict) -> bool:
     module = _runtime()
     module.configure(str(settings.get("pipe_name", "fssimx")))
-    return bool(module.get().get("connected"))
+    peek = getattr(module, "peek", None)
+    if callable(peek):
+        return bool(peek().get("connected"))
+    return False
 
 
 def shutdown() -> None:

@@ -631,9 +631,11 @@ class TelemetryBridge:
                         self.motion_sender.send(telemetry)
                         self.panel_sender.send(telemetry)
                     else:
+                        listener_error = str(telemetry.get("_listener_error", "") or "")
+                        listener_event = str(telemetry.get("_listener_event", "") or "")
                         with self._lock:
                             self._telemetry = {}
-                            self._status_text = "Aguardando telemetria..."
+                            self._status_text = self._waiting_status_text(listener_event, listener_error)
                             self._last_error = ""
                         self.motion_sender.send_defaults()
                         self.panel_sender.send_defaults()
@@ -701,6 +703,20 @@ class TelemetryBridge:
         if plugin.get("activity_source") == "telemetry":
             return bool(telemetry.get("connected"))
         return bool(telemetry)
+
+    def _waiting_status_text(self, listener_event: str, listener_error: str) -> str:
+        if listener_error:
+            return f"Pipe do farm com erro: {listener_error}"
+        labels = {
+            "idle": "Aguardando telemetria...",
+            "creating_pipe": "Criando pipe do farm...",
+            "waiting_client": "Aguardando o mod do farm conectar...",
+            "connected": "Pipe conectado. Aguardando dados do farm...",
+            "disconnected": "Mod do farm desconectou do pipe.",
+            "listener_error": "Falha ao abrir pipe do farm.",
+            "stopped": "Pipe do farm parado.",
+        }
+        return labels.get(listener_event, "Aguardando telemetria...")
 
     def _set_status(self, text: str) -> None:
         with self._lock:

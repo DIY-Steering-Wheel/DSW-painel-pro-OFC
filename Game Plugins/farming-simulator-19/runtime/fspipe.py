@@ -11,7 +11,7 @@ import win32pipe
 
 
 BUFFER_SIZE = 65536
-MAX_INSTANCES = 1
+MAX_INSTANCES = 10
 _lock = threading.Lock()
 _stop_event = threading.Event()
 _worker_thread: threading.Thread | None = None
@@ -19,6 +19,8 @@ _pipe_name = r"\\.\pipe\fssimx"
 _telemetry: dict[str, Any] = {"connected": False}
 _telemetry_indexes: dict[int, str] = {}
 _current_handle = None
+_last_error = ""
+_last_event = "idle"
 
 
 def _default_data() -> dict[str, Any]:
@@ -42,11 +44,22 @@ def configure(pipe_name: str = "fssimx") -> None:
 def get() -> dict[str, Any]:
     _ensure_worker()
     with _lock:
-        return dict(_telemetry) if _telemetry else _default_data()
+        data = dict(_telemetry) if _telemetry else _default_data()
+        data["_listener_error"] = _last_error
+        data["_listener_event"] = _last_event
+        return data
+
+
+def peek() -> dict[str, Any]:
+    with _lock:
+        data = dict(_telemetry) if _telemetry else _default_data()
+        data["_listener_error"] = _last_error
+        data["_listener_event"] = _last_event
+        return data
 
 
 def shutdown() -> None:
-    global _worker_thread, _current_handle, _telemetry_indexes
+    global _worker_thread, _current_handle, _telemetry_indexes, _last_error, _last_event
     _stop_event.set()
     _close_current_handle()
     thread = _worker_thread
@@ -57,6 +70,8 @@ def shutdown() -> None:
         _current_handle = None
         _telemetry = _default_data()
         _telemetry_indexes = {}
+        _last_error = ""
+        _last_event = "stopped"
     _stop_event.clear()
 
 
@@ -70,10 +85,13 @@ def _ensure_worker() -> None:
 
 
 def _worker_loop() -> None:
-    global _current_handle
+    global _current_handle, _last_error, _last_event
     while not _stop_event.is_set():
         handle = None
         try:
+            with _lock:
+                _last_event = "creating_pipe"
+                _last_error = ""
             handle = win32pipe.CreateNamedPipe(
                 _pipe_name,
                 win32pipe.PIPE_ACCESS_INBOUND,
@@ -85,18 +103,26 @@ def _worker_loop() -> None:
                 None,
             )
             _current_handle = handle
+            with _lock:
+                _last_event = "waiting_client"
             try:
                 win32pipe.ConnectNamedPipe(handle, None)
             except pywintypes.error as exc:
                 if exc.winerror != 535:
                     raise
+            with _lock:
+                _last_event = "connected"
+                _last_error = ""
 
             while not _stop_event.is_set():
                 message = _read_message(handle)
                 if message is None:
                     break
                 _process_message(message)
-        except pywintypes.error:
+        except pywintypes.error as exc:
+            with _lock:
+                _last_error = f"{exc.winerror}: {exc.strerror}"
+                _last_event = "listener_error"
             time.sleep(0.3)
         finally:
             _mark_disconnected()
@@ -166,9 +192,12 @@ def _process_message(message: str) -> None:
 
 
 def _mark_disconnected() -> None:
+    global _last_event
     with _lock:
         _telemetry.clear()
         _telemetry.update(_default_data())
+        if _last_event == "connected":
+            _last_event = "disconnected"
 
 
 def _to_snake_case(value: str) -> str:
