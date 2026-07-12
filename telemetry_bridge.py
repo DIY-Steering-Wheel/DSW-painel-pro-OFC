@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sys
 import threading
 import time
@@ -105,6 +106,8 @@ class TelemetryBridge:
         installed_games = self.store.load_games(list(self._plugin_by_name))
         panel_status = self.panel_sender.status(collecting)
         motion_status = self.motion_sender.status(collecting)
+        panel_status["kind"] = "panel"
+        motion_status["kind"] = "motion"
         active_process_names = self._active_process_names()
 
         games = []
@@ -354,6 +357,36 @@ class TelemetryBridge:
 
     def save_motion_config(self, data: dict[str, Any]) -> dict[str, Any]:
         self.store.save_motion_config(data)
+        return self.snapshot()
+
+    def export_panel_config_json(self) -> str:
+        return json.dumps(self.store.load_panel_config(), ensure_ascii=False, indent=2)
+
+    def import_panel_config_json(self, text: str) -> dict[str, Any]:
+        data = json.loads(text)
+        if not isinstance(data, dict):
+            raise RuntimeError("Arquivo JSON invalido para config do painel.")
+        self.store.save_panel_config(data)
+        self._push_message("success", "Painel importado", "Configuracao do painel carregada do JSON.")
+        return self.snapshot()
+
+    def send_device_command(self, device_type: str, command: str) -> dict[str, Any]:
+        try:
+            text = str(command or "")
+            if not text.strip():
+                raise RuntimeError("Digite um comando antes de enviar.")
+            if device_type == "panel":
+                self.panel_sender.send_command(text)
+                device_label = "Painel"
+            elif device_type == "motion":
+                self.motion_sender.send_command(text)
+                device_label = "Motion"
+            else:
+                raise RuntimeError("Dispositivo serial desconhecido.")
+            self._set_status(f"Comando enviado para {device_label.lower()}.")
+            self._push_message("success", "Comando enviado", f"{device_label}: {text}")
+        except Exception as exc:
+            self._set_error(f"Falha ao enviar comando serial: {exc}")
         return self.snapshot()
 
     def open_external_url(self, url: str) -> bool:

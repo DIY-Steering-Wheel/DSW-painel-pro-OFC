@@ -659,6 +659,8 @@ select {
 }
 
 .device-status-meta {
+  display: flex;
+  gap: 10px;
   color: var(--muted);
   font-size: 0.82rem;
   flex-wrap: wrap;
@@ -666,15 +668,15 @@ select {
 
 .template-catalog {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
 .template-card {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding: 12px;
-  border-radius: 18px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   align-content: start;
@@ -685,11 +687,18 @@ select {
   background: linear-gradient(180deg, rgba(60, 145, 230, 0.12), rgba(255, 255, 255, 0.04));
 }
 
+.template-card-head {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
 .template-preview,
 .template-preview-fallback {
   width: 100%;
-  height: 170px;
-  border-radius: 14px;
+  height: 96px;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.18);
 }
@@ -701,8 +710,24 @@ select {
 .template-preview-fallback {
   display: grid;
   place-items: center;
-  font-size: 2.5rem;
+  font-size: 1.9rem;
   color: #9ddcff;
+}
+
+.template-title-block {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.template-title-block strong {
+  line-height: 1.15;
+}
+
+.template-title-block span,
+.template-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .template-meta {
@@ -710,11 +735,27 @@ select {
   gap: 4px;
 }
 
+.template-meta p {
+  margin: 0;
+}
+
+.template-meta a {
+  color: #9ddcff;
+  text-decoration: none;
+}
+
 .template-actions,
 .install-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.device-command-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .about-html-host {

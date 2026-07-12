@@ -61,6 +61,36 @@ class NewAppApi:
     def save_motion_config(self, data: dict[str, Any]) -> dict[str, Any]:
         return self.bridge.save_motion_config(data)
 
+    def export_panel_config_json(self) -> dict[str, Any]:
+        if not webview.windows:
+            return self.bridge.snapshot()
+        result = webview.windows[0].create_file_dialog(
+            webview.SAVE_DIALOG,
+            save_filename="panel_config.json",
+            file_types=("JSON files (*.json)",),
+        )
+        if not result:
+            return self.bridge.snapshot()
+        with open(result[0], "w", encoding="utf-8") as handle:
+            handle.write(self.bridge.export_panel_config_json())
+        return self.bridge.snapshot()
+
+    def import_panel_config_json(self) -> dict[str, Any]:
+        if not webview.windows:
+            return self.bridge.snapshot()
+        result = webview.windows[0].create_file_dialog(
+            webview.OPEN_DIALOG,
+            allow_multiple=False,
+            file_types=("JSON files (*.json)",),
+        )
+        if not result:
+            return self.bridge.snapshot()
+        with open(result[0], "r", encoding="utf-8") as handle:
+            return self.bridge.import_panel_config_json(handle.read())
+
+    def send_device_command(self, device_type: str, command: str) -> dict[str, Any]:
+        return self.bridge.send_device_command(device_type, command)
+
     def set_auto_start(self, enabled: bool) -> dict[str, Any]:
         return self.bridge.set_auto_start(enabled)
 

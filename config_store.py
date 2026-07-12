@@ -40,6 +40,14 @@ class ConfigStore:
         self._cache_lock = threading.Lock()
 
     def load_panel_config(self) -> dict[str, Any]:
+        default = {
+            "mode": "Automatic",
+            "port": None,
+            "baudrate": 115200,
+            "order": list(DEFAULT_PANEL_ORDER),
+            "fps": 20,
+            "append_newline": False,
+        }
         if self.panel_path.exists():
             data = self._read_json(self.panel_path)
         elif self.legacy_open_source_panel_path.exists():
@@ -50,33 +58,44 @@ class ConfigStore:
             data = {
                 "mode": "Manual" if legacy.get("modo") == "Manual" else "Automatic",
                 "port": (legacy.get("portas") or [None])[0],
+                "baudrate": 115200,
                 "order": [PANEL_LABEL_TO_KEY[label] for label in legacy.get("saida", []) if label in PANEL_LABEL_TO_KEY],
                 "fps": 20,
+                "append_newline": False,
             }
             self.save_panel_config(data)
         else:
-            data = {"mode": "Automatic", "port": None, "order": list(DEFAULT_PANEL_ORDER), "fps": 20}
+            data = dict(default)
             self.save_panel_config(data)
-        data["order"] = self._sanitize_order(data.get("order", DEFAULT_PANEL_ORDER))
-        data["fps"] = self._sanitize_fps(data.get("fps", 20))
-        return data
+        merged = dict(default)
+        merged.update(data)
+        merged["mode"] = self._sanitize_serial_mode(merged.get("mode", "Automatic"))
+        merged["baudrate"] = self._sanitize_baudrate(merged.get("baudrate", 115200))
+        merged["append_newline"] = bool(merged.get("append_newline", False))
+        merged["order"] = self._sanitize_order(merged.get("order", DEFAULT_PANEL_ORDER))
+        merged["fps"] = self._sanitize_fps(merged.get("fps", 20))
+        return merged
 
     def save_panel_config(self, data: dict[str, Any]) -> dict[str, Any]:
         payload = {
-            "mode": data.get("mode", "Automatic"),
+            "mode": self._sanitize_serial_mode(data.get("mode", "Automatic")),
             "port": data.get("port"),
+            "baudrate": self._sanitize_baudrate(data.get("baudrate", 115200)),
             "order": self._sanitize_order(data.get("order", DEFAULT_PANEL_ORDER)),
             "fps": self._sanitize_fps(data.get("fps", 20)),
+            "append_newline": bool(data.get("append_newline", False)),
         }
         self._write_json(self.panel_path, payload)
         return payload
 
     def load_motion_config(self) -> dict[str, Any]:
         default = {
+            "mode": "Disabled",
             "port": None,
             "baudrate": 115200,
             "fps": 20,
             "is_sending": False,
+            "append_newline": False,
             "phase_invert_x": False,
             "phase_invert_y": False,
             "phase_invert_z": False,
@@ -102,15 +121,21 @@ class ConfigStore:
             self.save_motion_config(default)
         merged = dict(default)
         merged.update(data)
+        merged["mode"] = self._sanitize_serial_mode(merged.get("mode", "Disabled"), default_mode="Disabled")
+        merged["is_sending"] = merged["mode"] != "Disabled"
+        merged["baudrate"] = self._sanitize_baudrate(merged.get("baudrate", 115200))
+        merged["append_newline"] = bool(merged.get("append_newline", False))
         merged["fps"] = self._sanitize_fps(merged.get("fps", 20))
         return merged
 
     def save_motion_config(self, data: dict[str, Any]) -> dict[str, Any]:
         current = self.load_motion_config() if self.motion_path.exists() else {
+            "mode": "Disabled",
             "port": None,
             "baudrate": 115200,
             "fps": 20,
             "is_sending": False,
+            "append_newline": False,
             "phase_invert_x": False,
             "phase_invert_y": False,
             "phase_invert_z": False,
@@ -124,6 +149,10 @@ class ConfigStore:
             "max_value": 100.0,
         }
         current.update(data)
+        current["mode"] = self._sanitize_serial_mode(current.get("mode", "Disabled"), default_mode="Disabled")
+        current["is_sending"] = current["mode"] != "Disabled"
+        current["baudrate"] = self._sanitize_baudrate(current.get("baudrate", 115200))
+        current["append_newline"] = bool(current.get("append_newline", False))
         current["fps"] = self._sanitize_fps(current.get("fps", 20))
         self._write_json(self.motion_path, current)
         return current
@@ -255,6 +284,19 @@ class ConfigStore:
         except (TypeError, ValueError):
             fps = 20
         return max(1, min(fps, 120))
+
+    def _sanitize_baudrate(self, value: Any) -> int:
+        try:
+            baudrate = int(value)
+        except (TypeError, ValueError):
+            baudrate = 115200
+        return max(300, min(baudrate, 3_000_000))
+
+    def _sanitize_serial_mode(self, value: Any, default_mode: str = "Automatic") -> str:
+        text = str(value or default_mode).strip()
+        if text in {"Automatic", "Manual", "Disabled"}:
+            return text
+        return default_mode
 
     def _sanitize_value_equalization(self, rules: Any) -> list[dict[str, Any]]:
         if not isinstance(rules, list):

@@ -9,6 +9,7 @@ let mergeRulesDraft = [];
 let mergeSelectedGameIds = [];
 let installBusyState = null;
 let qrPreviewVisible = false;
+const deviceCommandDrafts = { panel: "", motion: "" };
 const motionHistory = [];
 const shownMessageIds = new Set();
 const dialogQueue = [];
@@ -75,12 +76,15 @@ function bindUi() {
 
   ui.panelMode = document.getElementById("panelMode");
   ui.panelPort = document.getElementById("panelPort");
+  ui.panelBaudrate = document.getElementById("panelBaudrate");
   ui.panelFps = document.getElementById("panelFps");
+  ui.panelAppendNewline = document.getElementById("panelAppendNewline");
   ui.panelSlots = document.getElementById("panelSlots");
+  ui.motionMode = document.getElementById("motionMode");
   ui.motionPort = document.getElementById("motionPort");
   ui.motionBaudrate = document.getElementById("motionBaudrate");
   ui.motionFps = document.getElementById("motionFps");
-  ui.motionSending = document.getElementById("motionSending");
+  ui.motionAppendNewline = document.getElementById("motionAppendNewline");
   ui.motionMin = document.getElementById("motionMin");
   ui.motionMax = document.getElementById("motionMax");
   ui.motionPhaseX = document.getElementById("motionPhaseX");
@@ -202,6 +206,8 @@ function bindUi() {
 
   document.getElementById("savePanelBtn").addEventListener("click", savePanelConfig);
   document.getElementById("saveMotionBtn").addEventListener("click", saveMotionConfig);
+  document.getElementById("exportPanelConfigBtn").addEventListener("click", exportPanelConfig);
+  document.getElementById("importPanelConfigBtn").addEventListener("click", importPanelConfig);
   document.getElementById("saveBasicSettingsBtn").addEventListener("click", saveBasicSettings);
   document.getElementById("saveWebServerBtn").addEventListener("click", saveWebServerConfig);
 
@@ -382,16 +388,20 @@ function renderConfigInputs() {
     .concat(state.available_ports.map((port) => `<option value="${port}">${port}</option>`))
     .join("");
 
-  ui.panelMode.innerHTML = '<option value="Automatic">Automatico</option><option value="Manual">Manual</option>';
+  ui.panelMode.innerHTML = '<option value="Disabled">Desligado</option><option value="Automatic">Automatico</option><option value="Manual">Manual</option>';
+  ui.motionMode.innerHTML = '<option value="Disabled">Desligado</option><option value="Automatic">Automatico</option><option value="Manual">Manual</option>';
   ui.panelPort.innerHTML = ports;
   ui.motionPort.innerHTML = ports;
   ui.panelMode.value = state.panel_config.mode;
   ui.panelPort.value = state.panel_config.port || "";
+  ui.panelBaudrate.value = state.panel_config.baudrate || 115200;
   ui.panelFps.value = state.panel_config.fps || 20;
+  ui.panelAppendNewline.checked = !!state.panel_config.append_newline;
+  ui.motionMode.value = state.motion_config.mode || "Disabled";
   ui.motionPort.value = state.motion_config.port || "";
   ui.motionBaudrate.value = state.motion_config.baudrate;
   ui.motionFps.value = state.motion_config.fps || 20;
-  ui.motionSending.value = String(state.motion_config.is_sending);
+  ui.motionAppendNewline.checked = !!state.motion_config.append_newline;
   ui.motionMin.value = state.motion_config.min_value;
   ui.motionMax.value = state.motion_config.max_value;
   ui.motionPhaseX.checked = !!state.motion_config.phase_invert_x;
@@ -593,15 +603,19 @@ function renderTemplateCatalog() {
     const card = document.createElement("div");
     card.className = `template-card ${state.web_server.selected_template === template.id ? "is-active" : ""}`;
     const websiteMarkup = template.website_url
-      ? `<p><a href="${template.website_url}" target="_blank" rel="noreferrer">${template.website_label}</a></p>`
+      ? `<a href="${template.website_url}" target="_blank" rel="noreferrer">${template.website_label}</a>`
       : "";
     card.innerHTML = `
-      ${template.preview_uri ? `<img class="template-preview" src="${template.preview_uri}" alt="">` : `<div class="template-preview-fallback"><i class="bi bi-phone"></i></div>`}
+      <div class="template-card-head">
+        ${template.preview_uri ? `<img class="template-preview" src="${template.preview_uri}" alt="">` : `<div class="template-preview-fallback"><i class="bi bi-phone"></i></div>`}
+        <div class="template-title-block">
+          <strong>${template.name}</strong>
+          <span>${template.author} | v${template.version}</span>
+          <span>${template.supports_mobile ? "Pronto para celular" : "Uso geral"} | ${state.web_server.selected_template === template.id ? "Selecionado" : "Disponivel"}</span>
+        </div>
+      </div>
       <div class="template-meta">
-        <strong>${template.name}</strong>
         <p>${template.description}</p>
-        <p>${template.author} | v${template.version}</p>
-        <p>${template.supports_mobile ? "Pronto para celular" : "Uso geral"} | ${state.web_server.selected_template === template.id ? "painel selecionado" : "painel disponivel"}</p>
         ${websiteMarkup}
       </div>
     `;
@@ -750,12 +764,41 @@ function renderDeviceStatuses() {
       </div>
       <div class="device-status-meta">
         <span>Porta: ${device.port || "nao configurada"}</span>
+        <span>Modo: ${formatSerialMode(device.mode)}</span>
+        <span>Baudrate: ${device.baudrate || "-"}</span>
         <span>Pacotes enviados: ${device.packets_sent || 0}</span>
         <span>Ultimo OK: ${device.last_success_at || "-"}</span>
         <span>Ultimo erro: ${device.last_error_at || "-"}</span>
       </div>
       <p class="form-help">${device.message}</p>
     `;
+    if (device.connected && device.kind) {
+      const commandRow = document.createElement("div");
+      commandRow.className = "device-command-row";
+      const input = document.createElement("input");
+      input.className = "form-control";
+      input.type = "text";
+      input.placeholder = "Enviar comando manual...";
+      input.value = deviceCommandDrafts[device.kind] || "";
+      input.addEventListener("input", () => {
+        deviceCommandDrafts[device.kind] = input.value;
+      });
+      input.addEventListener("keydown", async (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          await sendDeviceCommand(device.kind, input.value);
+        }
+      });
+      const button = document.createElement("button");
+      button.className = "btn btn-outline-light";
+      button.textContent = "Enviar";
+      button.addEventListener("click", async () => {
+        await sendDeviceCommand(device.kind, input.value);
+      });
+      commandRow.appendChild(input);
+      commandRow.appendChild(button);
+      item.appendChild(commandRow);
+    }
     ui.deviceStatusList.appendChild(item);
   });
 }
@@ -1169,7 +1212,9 @@ async function savePanelConfig() {
   state = await window.pywebview.api.save_panel_config({
     mode: ui.panelMode.value,
     port: ui.panelPort.value || null,
+    baudrate: Number(ui.panelBaudrate.value || 115200),
     fps: Number(ui.panelFps.value || 20),
+    append_newline: ui.panelAppendNewline.checked,
     order,
   });
   closeModals();
@@ -1178,10 +1223,11 @@ async function savePanelConfig() {
 
 async function saveMotionConfig() {
   state = await window.pywebview.api.save_motion_config({
+    mode: ui.motionMode.value,
     port: ui.motionPort.value || null,
     baudrate: Number(ui.motionBaudrate.value || 115200),
     fps: Number(ui.motionFps.value || 20),
-    is_sending: ui.motionSending.value === "true",
+    append_newline: ui.motionAppendNewline.checked,
     min_value: Number(ui.motionMin.value || -100),
     max_value: Number(ui.motionMax.value || 100),
     phase_invert_x: ui.motionPhaseX.checked,
@@ -1210,6 +1256,16 @@ async function saveBasicSettings() {
     telemetry_merge_rules: mergeRulesDraft,
   });
   closeModals();
+  render();
+}
+
+async function exportPanelConfig() {
+  state = await window.pywebview.api.export_panel_config_json();
+  render();
+}
+
+async function importPanelConfig() {
+  state = await window.pywebview.api.import_panel_config_json();
   render();
 }
 
@@ -1457,6 +1513,28 @@ function formatDeviceState(stateName) {
     error: "Erro",
   };
   return labels[stateName] || stateName;
+}
+
+function formatSerialMode(modeName) {
+  const labels = {
+    Disabled: "Desligado",
+    Automatic: "Automatico",
+    Manual: "Manual",
+  };
+  return labels[modeName] || modeName || "-";
+}
+
+async function sendDeviceCommand(deviceKind, rawValue = null) {
+  const sourceValue = rawValue == null ? deviceCommandDrafts[deviceKind] || "" : rawValue;
+  const command = String(sourceValue).trim();
+  if (!command) {
+    await showDialog({ title: "Comando serial", text: "Digite um comando antes de enviar." });
+    return;
+  }
+  deviceCommandDrafts[deviceKind] = command;
+  state = await window.pywebview.api.send_device_command(deviceKind, command);
+  deviceCommandDrafts[deviceKind] = "";
+  render();
 }
 
 function basename(filePath) {

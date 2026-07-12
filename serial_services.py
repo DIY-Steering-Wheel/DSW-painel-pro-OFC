@@ -60,6 +60,7 @@ class PanelSender(_SerialPortMixin):
         super().__init__()
         self.store = store
         self._packets_sent = 0
+        self._printed_first_packet = False
         self._last_success_at = 0.0
         self._last_error = ""
         self._last_error_at = 0.0
@@ -80,6 +81,9 @@ class PanelSender(_SerialPortMixin):
         self._send_values(values, config)
 
     def _send_values(self, values: list[Any], config: dict[str, Any]) -> None:
+        if config.get("mode") == "Disabled":
+            self._close_serial()
+            return
         port = config.get("port")
         if not port or serial is None:
             self._close_serial()
@@ -88,16 +92,26 @@ class PanelSender(_SerialPortMixin):
             self._set_error(f"Porta {port} nao encontrada.")
             self._close_serial()
             return
-        packet = ",".join(map(str, values)) + "\n"
+        packet = self._build_packet(values, bool(config.get("append_newline", False)))
         try:
-            conn = self._ensure_serial(port, 115200)
+            conn = self._ensure_serial(port, int(config.get("baudrate", 115200)))
             conn.write(packet.encode("utf-8"))
+            self._print_first_packet(packet)
             self._packets_sent += 1
             self._last_success_at = time.time()
             self._last_error = ""
         except Exception as exc:
             self._close_serial()
             self._set_error(str(exc))
+
+    def send_command(self, command: str) -> None:
+        text = str(command or "")
+        if not text.strip():
+            return
+        config = self.store.load_panel_config()
+        if config.get("mode") == "Disabled":
+            raise RuntimeError("Painel serial esta desligado.")
+        self._write_packet(config, text)
 
     def preview_values(self, telemetry: dict[str, Any]) -> list[Any]:
         config = self.store.load_panel_config()
@@ -127,8 +141,10 @@ class PanelSender(_SerialPortMixin):
             label="Painel serial",
             port=port,
             ports=ports,
-            enabled=True,
+            enabled=config.get("mode") != "Disabled",
             is_collecting=is_collecting,
+            baudrate=int(config.get("baudrate", 115200)),
+            mode=str(config.get("mode", "Automatic")),
         )
 
     def _build_status(
@@ -139,6 +155,8 @@ class PanelSender(_SerialPortMixin):
         ports: list[str],
         enabled: bool,
         is_collecting: bool,
+        baudrate: int,
+        mode: str,
     ) -> dict[str, Any]:
         now = time.time()
         if serial is None:
@@ -174,8 +192,11 @@ class PanelSender(_SerialPortMixin):
             "port": port or "",
             "available": bool(port and port in ports),
             "enabled": enabled,
+            "connected": bool(port and port in ports and enabled and serial is not None),
             "state": state,
             "message": message,
+            "baudrate": baudrate,
+            "mode": mode,
             "packets_sent": self._packets_sent,
             "last_success_at": self._format_timestamp(self._last_success_at),
             "last_error_at": self._format_timestamp(self._last_error_at),
@@ -198,12 +219,43 @@ class PanelSender(_SerialPortMixin):
             return ""
         return time.strftime("%H:%M:%S", time.localtime(value))
 
+    def _print_first_packet(self, packet: str) -> None:
+        if self._printed_first_packet:
+            return
+        print(f"[Painel serial] {packet.rstrip()}")
+        self._printed_first_packet = True
+
+    def _build_packet(self, values: list[Any], append_newline: bool) -> str:
+        packet = ",".join(map(str, values))
+        return packet + ("\n" if append_newline else "")
+
+    def _write_packet(self, config: dict[str, Any], payload: str) -> None:
+        port = config.get("port")
+        if not port or serial is None:
+            raise RuntimeError("Nenhuma porta serial configurada.")
+        if port not in self.list_ports():
+            self._close_serial()
+            raise RuntimeError(f"Porta {port} nao encontrada.")
+        packet = payload + ("\n" if bool(config.get("append_newline", False)) else "")
+        try:
+            conn = self._ensure_serial(port, int(config.get("baudrate", 115200)))
+            conn.write(packet.encode("utf-8"))
+            self._print_first_packet(packet)
+            self._packets_sent += 1
+            self._last_success_at = time.time()
+            self._last_error = ""
+        except Exception as exc:
+            self._close_serial()
+            self._set_error(str(exc))
+            raise
+
 
 class MotionSender(_SerialPortMixin):
     def __init__(self, store: ConfigStore) -> None:
         super().__init__()
         self.store = store
         self._packets_sent = 0
+        self._printed_first_packet = False
         self._last_success_at = 0.0
         self._last_error = ""
         self._last_error_at = 0.0
@@ -211,7 +263,7 @@ class MotionSender(_SerialPortMixin):
 
     def send(self, telemetry: dict[str, Any]) -> None:
         config = self.store.load_motion_config()
-        if not config.get("is_sending"):
+        if config.get("mode") == "Disabled" or not config.get("is_sending"):
             self._close_serial()
             return
         if not self._can_dispatch(float(config.get("fps", 20))):
@@ -220,7 +272,7 @@ class MotionSender(_SerialPortMixin):
 
     def send_defaults(self, force: bool = False) -> None:
         config = self.store.load_motion_config()
-        if not config.get("is_sending"):
+        if config.get("mode") == "Disabled" or not config.get("is_sending"):
             self._close_serial()
             return
         if not force and not self._can_dispatch(float(config.get("fps", 20))):
@@ -237,16 +289,43 @@ class MotionSender(_SerialPortMixin):
             self._close_serial()
             return
         x, y, z = self._normalize_axes(telemetry, config)
-        packet = f"{x},{y},{z}\n"
+        packet = ",".join((str(x), str(y), str(z))) + ("\n" if bool(config.get("append_newline", False)) else "")
         try:
             conn = self._ensure_serial(port, int(config["baudrate"]))
             conn.write(packet.encode("utf-8"))
+            self._print_first_packet(packet)
             self._packets_sent += 1
             self._last_success_at = time.time()
             self._last_error = ""
         except Exception as exc:
             self._close_serial()
             self._set_error(str(exc))
+
+    def send_command(self, command: str) -> None:
+        text = str(command or "")
+        if not text.strip():
+            return
+        config = self.store.load_motion_config()
+        if config.get("mode") == "Disabled":
+            raise RuntimeError("Motion serial esta desligado.")
+        port = config.get("port")
+        if not port or serial is None:
+            raise RuntimeError("Nenhuma porta serial configurada.")
+        if port not in self.list_ports():
+            self._close_serial()
+            raise RuntimeError(f"Porta {port} nao encontrada.")
+        packet = text + ("\n" if bool(config.get("append_newline", False)) else "")
+        try:
+            conn = self._ensure_serial(port, int(config["baudrate"]))
+            conn.write(packet.encode("utf-8"))
+            self._print_first_packet(packet)
+            self._packets_sent += 1
+            self._last_success_at = time.time()
+            self._last_error = ""
+        except Exception as exc:
+            self._close_serial()
+            self._set_error(str(exc))
+            raise
 
     def preview(self, telemetry: dict[str, Any]) -> dict[str, dict[str, float]]:
         config = self.store.load_motion_config()
@@ -290,8 +369,10 @@ class MotionSender(_SerialPortMixin):
             label="Motion serial",
             port=port,
             ports=ports,
-            enabled=bool(config.get("is_sending")),
+            enabled=bool(config.get("is_sending")) and config.get("mode") != "Disabled",
             is_collecting=is_collecting,
+            baudrate=int(config.get("baudrate", 115200)),
+            mode=str(config.get("mode", "Disabled")),
         )
 
     def _build_status(
@@ -302,6 +383,8 @@ class MotionSender(_SerialPortMixin):
         ports: list[str],
         enabled: bool,
         is_collecting: bool,
+        baudrate: int,
+        mode: str,
     ) -> dict[str, Any]:
         now = time.time()
         if serial is None:
@@ -337,8 +420,11 @@ class MotionSender(_SerialPortMixin):
             "port": port or "",
             "available": bool(port and port in ports),
             "enabled": enabled,
+            "connected": bool(port and port in ports and enabled and serial is not None),
             "state": state,
             "message": message,
+            "baudrate": baudrate,
+            "mode": mode,
             "packets_sent": self._packets_sent,
             "last_success_at": self._format_timestamp(self._last_success_at),
             "last_error_at": self._format_timestamp(self._last_error_at),
@@ -352,6 +438,12 @@ class MotionSender(_SerialPortMixin):
         if not value:
             return ""
         return time.strftime("%H:%M:%S", time.localtime(value))
+
+    def _print_first_packet(self, packet: str) -> None:
+        if self._printed_first_packet:
+            return
+        print(f"[Motion serial] {packet.rstrip()}")
+        self._printed_first_packet = True
 
     def _can_dispatch(self, fps: float) -> bool:
         now = time.perf_counter()
