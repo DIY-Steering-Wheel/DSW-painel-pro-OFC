@@ -21,6 +21,7 @@ except ImportError:  # pragma: no cover
 APP_TITLE = "DSW Painel Pro - By Valdemir"
 MUTEX_NAME = "Local\\DSWPainelProSingleton"
 _SINGLE_INSTANCE_HANDLE = None
+_TRAY_CONTROLLER = None
 
 
 class TrayController:
@@ -30,6 +31,7 @@ class TrayController:
         self.start_hidden = start_hidden
         self.form = None
         self.notify_icon = None
+        self.context_menu = None
         self._exit_requested = False
 
     @staticmethod
@@ -58,12 +60,11 @@ class TrayController:
             self.form = form
             self.notify_icon = forms.NotifyIcon()
             self.notify_icon.Text = "DSW Painel Pro"
-            icon_path = get_app_base_dir() / "app_icon.ico"
-            if icon_path.exists():
-                self.notify_icon.Icon = drawing.Icon(str(icon_path))
+            self.notify_icon.Icon = self._load_tray_icon(drawing)
             self.notify_icon.Visible = True
 
             menu = forms.ContextMenuStrip()
+            self.context_menu = menu
             open_item = menu.Items.Add("Abrir DSW Painel Pro")
             exit_item = menu.Items.Add("Fechar DSW Painel Pro")
             open_item.Click += self._on_open_clicked
@@ -151,6 +152,19 @@ class TrayController:
             except Exception:
                 pass
             self.notify_icon = None
+        self.context_menu = None
+
+    def _load_tray_icon(self, drawing: Any) -> Any:
+        icon_path = get_app_base_dir() / "app_icon.ico"
+        if icon_path.exists():
+            try:
+                return drawing.Icon(str(icon_path))
+            except Exception:
+                pass
+        try:
+            return drawing.SystemIcons.Application
+        except Exception:
+            return None
 
     def _minimize_to_tray_enabled(self) -> bool:
         try:
@@ -193,7 +207,9 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _bootstrap_windows_ui(window: webview.Window, api: NewAppApi, start_in_tray: bool) -> None:
+    global _TRAY_CONTROLLER
     tray = TrayController(window, api, start_in_tray)
+    _TRAY_CONTROLLER = tray
     tray.install()
     _apply_windows_dark_titlebar(window, wait_for_show=not start_in_tray)
 

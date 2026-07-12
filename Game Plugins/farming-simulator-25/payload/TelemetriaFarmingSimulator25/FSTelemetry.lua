@@ -7,8 +7,7 @@ local FSContext = {
 	PipeControl = {
 		Pipe = nil,
 		PipeName = "\\\\.\\pipe\\fssimx",
-		RefreshRate = 300,
-		RefreshCurrent = -1
+		HeaderPending = true
 	},
 	MaxDepthImplements = 10,
 	Telemetry = {}
@@ -595,28 +594,33 @@ function FSTelemetry:AddText(value, text)
 end
 
 function FSTelemetry:WriteTelemetry()
-	if FSContext.PipeControl.RefreshCurrent == 0 then
-		FSContext.PipeControl.Pipe:write(FSTelemetry:BuildHeaderText());
-		FSContext.PipeControl.Pipe:flush();
+	if FSContext.PipeControl.Pipe == nil then
+		return;
 	end
 
-	FSContext.PipeControl.Pipe:write(FSTelemetry:BuildBodyText());
-	FSContext.PipeControl.Pipe:flush();
+	local ok = pcall(function()
+		if FSContext.PipeControl.HeaderPending then
+			FSContext.PipeControl.Pipe:write(FSTelemetry:BuildHeaderText());
+			FSContext.PipeControl.Pipe:flush();
+			FSContext.PipeControl.HeaderPending = false;
+		end
+
+		FSContext.PipeControl.Pipe:write(FSTelemetry:BuildBodyText());
+		FSContext.PipeControl.Pipe:flush();
+	end)
+
+	if not ok and FSContext.PipeControl.Pipe ~= nil then
+		pcall(function() FSContext.PipeControl.Pipe:flush(); end)
+		pcall(function() FSContext.PipeControl.Pipe:close(); end)
+		FSContext.PipeControl.Pipe = nil;
+		FSContext.PipeControl.HeaderPending = true;
+	end
 end
 
 function FSTelemetry:RefreshPipe()
-	FSContext.PipeControl.RefreshCurrent = FSContext.PipeControl.RefreshCurrent + 1;
-	if FSContext.PipeControl.RefreshCurrent >= FSContext.PipeControl.RefreshRate then
-		FSContext.PipeControl.RefreshCurrent = 0;
-	end
-
-	if FSContext.PipeControl.RefreshCurrent == 0 then
-		if FSContext.PipeControl.Pipe ~= nil then
-			FSContext.PipeControl.Pipe:flush();
-			FSContext.PipeControl.Pipe:close();
-		end
-
+	if FSContext.PipeControl.Pipe == nil then
 		FSContext.PipeControl.Pipe = io.open(FSContext.PipeControl.PipeName, "w");
+		FSContext.PipeControl.HeaderPending = FSContext.PipeControl.Pipe ~= nil;
 	end
 end
 

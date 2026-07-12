@@ -11,6 +11,8 @@ from typing import Any
 
 import psutil
 
+FARM_RECONNECT_GRACE_SECONDS = 5.5
+
 try:
     from .config_store import ConfigStore
     from .constants import PANEL_FIELDS, panel_field_description
@@ -66,6 +68,8 @@ class TelemetryBridge:
         self._ui_messages: deque[dict[str, Any]] = deque(maxlen=20)
         self._message_seq = 0
         self._about_template_html = self._load_about_template()
+        self._last_active_telemetry: dict[str, Any] = {}
+        self._last_active_telemetry_at = 0.0
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -626,6 +630,8 @@ class TelemetryBridge:
                         telemetry = self._apply_equalization(plugin, telemetry)
                         with self._lock:
                             self._telemetry = telemetry
+                            self._last_active_telemetry = dict(telemetry)
+                            self._last_active_telemetry_at = time.monotonic()
                             self._status_text = "Coletando telemetria"
                             self._last_error = ""
                         self.motion_sender.send(telemetry)
@@ -634,11 +640,22 @@ class TelemetryBridge:
                         listener_error = str(telemetry.get("_listener_error", "") or "")
                         listener_event = str(telemetry.get("_listener_event", "") or "")
                         with self._lock:
-                            self._telemetry = {}
-                            self._status_text = self._waiting_status_text(listener_event, listener_error)
+                            recently_active = (
+                                time.monotonic() - self._last_active_telemetry_at
+                            ) < FARM_RECONNECT_GRACE_SECONDS
+                            if recently_active and self._last_active_telemetry:
+                                self._telemetry = dict(self._last_active_telemetry)
+                                self._status_text = "Reconectando telemetria do farm..."
+                            else:
+                                self._telemetry = {}
+                                self._status_text = self._waiting_status_text(listener_event, listener_error)
                             self._last_error = ""
-                        self.motion_sender.send_defaults()
-                        self.panel_sender.send_defaults()
+                        if recently_active and self._last_active_telemetry:
+                            self.motion_sender.send(self._last_active_telemetry)
+                            self.panel_sender.send(self._last_active_telemetry)
+                        else:
+                            self.motion_sender.send_defaults()
+                            self.panel_sender.send_defaults()
                     time.sleep(0.02)
                 except Exception as exc:
                     self._set_error(f"Erro ao coletar telemetria: {exc}")
