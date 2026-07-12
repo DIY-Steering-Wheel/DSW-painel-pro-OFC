@@ -116,6 +116,7 @@ function bindUi() {
   ui.pressureUnit = document.getElementById("pressureUnit");
   ui.temperatureUnit = document.getElementById("temperatureUnit");
   ui.launchWithWindows = document.getElementById("launchWithWindows");
+  ui.minimizeToTray = document.getElementById("minimizeToTray");
   ui.detectOpenGameOnStart = document.getElementById("detectOpenGameOnStart");
   ui.applyGameUnitsBtn = document.getElementById("applyGameUnitsBtn");
   ui.selectedGameUnitsHint = document.getElementById("selectedGameUnitsHint");
@@ -397,6 +398,7 @@ function renderConfigInputs() {
   ui.pressureUnit.value = state.basic_settings.pressure_unit;
   ui.temperatureUnit.value = state.basic_settings.temperature_unit;
   ui.launchWithWindows.checked = !!state.basic_settings.launch_with_windows;
+  ui.minimizeToTray.checked = state.basic_settings.minimize_to_tray !== false;
   ui.detectOpenGameOnStart.checked = !!state.basic_settings.detect_open_game_on_start;
   fallbackOverridesDraft = { ...(state.basic_settings.fallback_overrides || {}) };
   equalizationRulesDraft = (state.basic_settings.value_equalization_rules || []).map((rule) => ({
@@ -592,6 +594,13 @@ function renderTemplateCatalog() {
     activateButton.className = "btn btn-outline-light";
     activateButton.textContent = state.web_server.selected_template === template.id ? "Selecionado" : "Ativar";
     activateButton.addEventListener("click", async () => {
+      if (state.web_server.http_enabled && state.web_server.selected_template !== template.id) {
+        await showDialog({
+          title: "Servidor web ligado",
+          text: "Servidor ligado, desligue para depois alterar o template HTML.",
+        });
+        return;
+      }
       state = await window.pywebview.api.save_web_server_config({ selected_template: template.id });
       render();
     });
@@ -600,11 +609,18 @@ function renderTemplateCatalog() {
     if (template.can_delete) {
       const deleteButton = document.createElement("button");
       deleteButton.className = "btn btn-danger";
-      deleteButton.textContent = "Excluir";
-      deleteButton.addEventListener("click", async () => {
-        const confirmed = await showDialog({
-          title: "Excluir template",
-          text: `Deseja excluir o template ${template.name}?`,
+        deleteButton.textContent = "Excluir";
+        deleteButton.addEventListener("click", async () => {
+          if (state.web_server.http_enabled) {
+            await showDialog({
+              title: "Servidor web ligado",
+              text: "Servidor ligado, desligue para depois alterar os templates HTML.",
+            });
+            return;
+          }
+          const confirmed = await showDialog({
+            title: "Excluir template",
+            text: `Deseja excluir o template ${template.name}?`,
           confirmLabel: "Excluir",
           cancelLabel: "Cancelar",
         });
@@ -1085,6 +1101,7 @@ async function saveBasicSettings() {
     pressure_unit: ui.pressureUnit.value,
     temperature_unit: ui.temperatureUnit.value,
     launch_with_windows: ui.launchWithWindows.checked,
+    minimize_to_tray: ui.minimizeToTray.checked,
     detect_open_game_on_start: ui.detectOpenGameOnStart.checked,
     fallback_overrides: fallbackOverridesDraft,
     value_equalization_rules: equalizationRulesDraft,

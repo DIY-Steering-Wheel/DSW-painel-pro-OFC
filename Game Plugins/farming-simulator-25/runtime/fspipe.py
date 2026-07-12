@@ -1,26 +1,17 @@
 from __future__ import annotations
 
-import ctypes
 import re
 import threading
 import time
-from ctypes import wintypes
 from typing import Any
 
-
-INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
-ERROR_PIPE_CONNECTED = 535
-ERROR_PIPE_BUSY = 231
-ERROR_MORE_DATA = 234
-BUFFER_SIZE = 4096
-MAX_INSTANCES = 10
-PIPE_ACCESS_INBOUND = 0x00000001
-PIPE_TYPE_MESSAGE = 0x00000004
-PIPE_READMODE_MESSAGE = 0x00000002
-PIPE_WAIT = 0x00000000
+import pywintypes
+import win32file
+import win32pipe
 
 
-_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+BUFFER_SIZE = 65536
+MAX_INSTANCES = 1
 _lock = threading.Lock()
 _stop_event = threading.Event()
 _worker_thread: threading.Thread | None = None
@@ -57,11 +48,10 @@ def get() -> dict[str, Any]:
 def shutdown() -> None:
     global _worker_thread, _current_handle, _telemetry_indexes
     _stop_event.set()
-    _poke_pipe()
+    _close_current_handle()
     thread = _worker_thread
     if thread is not None and thread.is_alive():
         thread.join(timeout=1.0)
-    _close_current_handle()
     with _lock:
         _worker_thread = None
         _current_handle = None
@@ -82,67 +72,59 @@ def _ensure_worker() -> None:
 def _worker_loop() -> None:
     global _current_handle
     while not _stop_event.is_set():
-        handle = _create_server_pipe()
-        if handle == INVALID_HANDLE_VALUE:
-            time.sleep(0.5)
-            continue
-        _current_handle = handle
-
-        connected = _kernel32.ConnectNamedPipe(handle, None)
-        if not connected:
-            error = ctypes.get_last_error()
-            if error != ERROR_PIPE_CONNECTED:
-                _close_handle(handle)
-                _current_handle = None
-                if _stop_event.wait(0.3):
-                    break
-                continue
-
+        handle = None
         try:
+            handle = win32pipe.CreateNamedPipe(
+                _pipe_name,
+                win32pipe.PIPE_ACCESS_INBOUND,
+                win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_READMODE_MESSAGE | win32pipe.PIPE_WAIT,
+                MAX_INSTANCES,
+                BUFFER_SIZE,
+                BUFFER_SIZE,
+                0,
+                None,
+            )
+            _current_handle = handle
+            try:
+                win32pipe.ConnectNamedPipe(handle, None)
+            except pywintypes.error as exc:
+                if exc.winerror != 535:
+                    raise
+
             while not _stop_event.is_set():
                 message = _read_message(handle)
                 if message is None:
                     break
                 _process_message(message)
+        except pywintypes.error:
+            time.sleep(0.3)
         finally:
             _mark_disconnected()
-            _disconnect_pipe(handle)
-            _close_handle(handle)
+            if handle is not None:
+                try:
+                    win32file.CloseHandle(handle)
+                except Exception:
+                    pass
             _current_handle = None
 
 
-def _create_server_pipe():
-    return _kernel32.CreateNamedPipeW(
-        _pipe_name,
-        PIPE_ACCESS_INBOUND,
-        PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
-        MAX_INSTANCES,
-        0,
-        BUFFER_SIZE,
-        0,
-        None,
-    )
-
-
-def _read_message(handle: int) -> str | None:
+def _read_message(handle) -> str | None:
     chunks: list[str] = []
     while not _stop_event.is_set():
-        buffer = ctypes.create_string_buffer(BUFFER_SIZE)
-        read = wintypes.DWORD()
-        success = _kernel32.ReadFile(handle, buffer, BUFFER_SIZE, ctypes.byref(read), None)
-        if read.value:
-            chunks.append(buffer.raw[: read.value].decode("utf-8", errors="ignore"))
-        if not success:
-            error = ctypes.get_last_error()
-            if error == ERROR_MORE_DATA:
+        try:
+            _, data = win32file.ReadFile(handle, BUFFER_SIZE)
+            if not data:
+                return None
+            chunks.append(data.decode("utf-8", errors="ignore"))
+            break
+        except pywintypes.error as exc:
+            if exc.winerror == 234:
+                if len(exc.args) >= 3 and isinstance(exc.args[2], (bytes, bytearray)):
+                    chunks.append(bytes(exc.args[2]).decode("utf-8", errors="ignore"))
                 continue
-            if error in {109, 232, 233}:
+            if exc.winerror in {109, 232, 233}:
                 return None
             return None
-        if read.value == 0:
-            return None
-        if read.value < BUFFER_SIZE:
-            break
     if not chunks:
         return None
     return "".join(chunks).rstrip("\0").strip()
@@ -200,10 +182,13 @@ def _to_snake_case(value: str) -> str:
 
 def _normalize_message(value: str) -> str:
     text = (value or "").strip().lstrip("\ufeff")
-    text = text.replace("Ã‚Â¶", "¶")
-    text = text.replace("Â¶", "¶")
-    text = text.replace("Â§", "§")
-    return text
+    return (
+        text.replace("Ãƒâ€šÃ‚Â¶", "¶")
+        .replace("Ã‚Â¶", "¶")
+        .replace("Â¶", "¶")
+        .replace("Ã‚Â§", "§")
+        .replace("Â§", "§")
+    )
 
 
 def _split_fields(value: str) -> list[str]:
@@ -237,41 +222,12 @@ def _is_boolean_key(key: str) -> bool:
     return key.startswith("is_") or key.endswith(("_enabled", "_on", "_started", "_active", "_selected", "_lowered", "_turned_on"))
 
 
-def _disconnect_pipe(handle: int) -> None:
-    try:
-        _kernel32.DisconnectNamedPipe(handle)
-    except Exception:
-        pass
-
-
 def _close_current_handle() -> None:
     global _current_handle
     handle = _current_handle
-    if handle not in (None, INVALID_HANDLE_VALUE):
-        _disconnect_pipe(handle)
-        _close_handle(handle)
+    if handle is not None:
+        try:
+            win32file.CloseHandle(handle)
+        except Exception:
+            pass
     _current_handle = None
-
-
-def _close_handle(handle: int) -> None:
-    if handle not in (None, INVALID_HANDLE_VALUE):
-        _kernel32.CloseHandle(handle)
-
-
-def _poke_pipe() -> None:
-    try:
-        handle = _kernel32.CreateFileW(
-            _pipe_name,
-            0x40000000,
-            0,
-            None,
-            3,
-            0,
-            None,
-        )
-        if handle not in (None, INVALID_HANDLE_VALUE):
-            _kernel32.CloseHandle(handle)
-        elif ctypes.get_last_error() == ERROR_PIPE_BUSY:
-            return
-    except Exception:
-        pass

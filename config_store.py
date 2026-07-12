@@ -170,6 +170,7 @@ class ConfigStore:
             "auto_start_enabled": False,
             "detect_open_game_on_start": False,
             "launch_with_windows": False,
+            "minimize_to_tray": True,
             "speed_unit": "KM/H",
             "pressure_unit": "BAR",
             "temperature_unit": "Celsius",

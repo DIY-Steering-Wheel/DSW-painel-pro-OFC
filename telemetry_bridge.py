@@ -365,6 +365,11 @@ class TelemetryBridge:
         return self.snapshot()
 
     def save_web_server_config(self, data: dict[str, Any]) -> dict[str, Any]:
+        current_status = self.web_runtime.status()
+        current_template = current_status.get("selected_template")
+        incoming_template = data.get("selected_template", current_template)
+        if current_status.get("http_enabled") and incoming_template != current_template:
+            raise RuntimeError("Servidor ligado, desligue para depois alterar o template HTML.")
         self.web_runtime.save_config(data)
         return self.snapshot()
 
@@ -389,7 +394,7 @@ class TelemetryBridge:
             with self._lock:
                 self._template_package_path = ""
             imported_templates = self.web_runtime.load_template_catalog()
-            if imported_names:
+            if imported_names and not self.web_runtime.status().get("http_enabled"):
                 imported = next((item for item in imported_templates if item["name"] == imported_names[0]), None)
                 if imported is not None:
                     self.web_runtime.save_config({"selected_template": imported["id"]})
@@ -402,6 +407,8 @@ class TelemetryBridge:
 
     def delete_template(self, template_id: str) -> dict[str, Any]:
         try:
+            if self.web_runtime.status().get("http_enabled"):
+                raise RuntimeError("Servidor ligado, desligue para depois alterar os templates HTML.")
             removed_name = self.web_runtime.delete_template(template_id)
             self._set_status(f"Template removido: {removed_name}")
             self._push_message("success", "Template removido", removed_name)
@@ -738,9 +745,11 @@ class TelemetryBridge:
         base_dir = get_app_base_dir()
         if enabled:
             if getattr(sys, "frozen", False):
-                command = f"@echo off\ncd /d \"{base_dir}\"\nstart \"\" \"{Path(sys.executable).resolve()}\"\n"
+                args = " --tray" if self._settings.get("minimize_to_tray", True) else ""
+                command = f"@echo off\ncd /d \"{base_dir}\"\nstart \"\" \"{Path(sys.executable).resolve()}\"{args}\n"
             else:
-                command = f"@echo off\ncd /d \"{base_dir}\"\nstart \"\" \"{Path(sys.executable).resolve()}\" \"{(base_dir / 'main.py').resolve()}\"\n"
+                args = " --tray" if self._settings.get("minimize_to_tray", True) else ""
+                command = f"@echo off\ncd /d \"{base_dir}\"\nstart \"\" \"{Path(sys.executable).resolve()}\" \"{(base_dir / 'main.py').resolve()}\"{args}\n"
             launcher.write_text(command, encoding="utf-8")
             if old_launcher.exists() and old_launcher != launcher:
                 old_launcher.unlink()

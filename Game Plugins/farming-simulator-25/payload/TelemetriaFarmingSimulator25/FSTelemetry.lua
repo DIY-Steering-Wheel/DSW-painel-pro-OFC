@@ -522,23 +522,32 @@ function FSTelemetry:ProcessGameEdition()
 	FSContext.Telemetry.GameEdition = 19;
 	if g_minModDescVersion == 60 then
 		FSContext.Telemetry.GameEdition = 22;
-	elseif g_minModDescVersion == 90 then
+	elseif g_minModDescVersion >= 90 then
 		FSContext.Telemetry.GameEdition = 25;
 	end
 end
 
+function FSTelemetry:GetOrderedTelemetryKeys()
+	local keys = {};
+	for key, _ in pairs(FSContext.Telemetry) do
+		table.insert(keys, key);
+	end
+	table.sort(keys);
+	return keys;
+end
+
 function  FSTelemetry:BuildHeaderText()
 	local text = FSTelemetry:AddText("HEADER", "");
-	for k, v in pairs(FSContext.Telemetry) do
-		text = FSTelemetry:AddText(k, text);
+	for _, key in ipairs(FSTelemetry:GetOrderedTelemetryKeys()) do
+		text = FSTelemetry:AddText(key, text);
 	end
 	return text;
 end 
 
 function FSTelemetry:BuildBodyText()
 	local text = FSTelemetry:AddText("BODY", "");
-	for key, value in pairs(FSContext.Telemetry) do
-		text = FSTelemetry:AddText(FSTelemetry:GetTextValue(value), text);
+	for _, key in ipairs(FSTelemetry:GetOrderedTelemetryKeys()) do
+		text = FSTelemetry:AddText(FSTelemetry:GetTextValue(FSContext.Telemetry[key]), text);
 	end
 	return text;
 end
@@ -612,8 +621,9 @@ function FSTelemetry:RefreshPipe()
 end
 
 function FSTelemetry:GetCurrentVehicle()
+	local player = FSTelemetry:GetCurrentPlayer();
 	if g_minModDescVersion >= 90 then
-		return FSTelemetry:GetCurrentPlayer().getCurrentVehicle();
+		return player ~= nil and player:getCurrentVehicle() or nil;
 	else
 		return g_currentMission.controlledVehicle;
 	end
@@ -621,6 +631,9 @@ end
 
 function FSTelemetry:GetCurrentPlayer()
 	if g_minModDescVersion >= 90 then
+		if g_currentMission == nil or g_currentMission.playerSystem == nil or g_currentMission.playerSystem.playersByUserId == nil then
+			return nil;
+		end
 		return g_currentMission.playerSystem.playersByUserId[g_currentMission.playerUserId];
 	else
 		return g_currentMission.player;
