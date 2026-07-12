@@ -1,0 +1,12 @@
+{
+  "id": "simple-dashboard",
+  "name": "Simple Dashboard",
+  "description": "Template padrao da DSW com telemetria ao vivo para navegador e celular.",
+  "author": "Equipe DSW de Simuladores",
+  "version": "1.0.0",
+  "entry_html": "index.html",
+  "supports_mobile": true,
+  "built_in": true,
+  "website_label": "Discord da DSW",
+  "website_url": ""
+}

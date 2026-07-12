@@ -46,7 +46,8 @@ class ConfigStore:
             "baudrate": 115200,
             "order": list(DEFAULT_PANEL_ORDER),
             "fps": 20,
-            "append_newline": False,
+            "append_newline": True,
+            "append_newline_explicit": False,
         }
         if self.panel_path.exists():
             data = self._read_json(self.panel_path)
@@ -61,7 +62,8 @@ class ConfigStore:
                 "baudrate": 115200,
                 "order": [PANEL_LABEL_TO_KEY[label] for label in legacy.get("saida", []) if label in PANEL_LABEL_TO_KEY],
                 "fps": 20,
-                "append_newline": False,
+                "append_newline": True,
+                "append_newline_explicit": False,
             }
             self.save_panel_config(data)
         else:
@@ -71,9 +73,14 @@ class ConfigStore:
         merged.update(data)
         merged["mode"] = self._sanitize_serial_mode(merged.get("mode", "Automatic"))
         merged["baudrate"] = self._sanitize_baudrate(merged.get("baudrate", 115200))
-        merged["append_newline"] = bool(merged.get("append_newline", False))
+        merged["append_newline"] = bool(merged.get("append_newline", True))
+        merged["append_newline_explicit"] = bool(merged.get("append_newline_explicit", False))
         merged["order"] = self._sanitize_order(merged.get("order", DEFAULT_PANEL_ORDER))
         merged["fps"] = self._sanitize_fps(merged.get("fps", 20))
+        if not merged["append_newline_explicit"]:
+            merged["append_newline"] = True
+            merged["append_newline_explicit"] = True
+            self._write_json(self.panel_path, merged)
         return merged
 
     def save_panel_config(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -83,7 +90,8 @@ class ConfigStore:
             "baudrate": self._sanitize_baudrate(data.get("baudrate", 115200)),
             "order": self._sanitize_order(data.get("order", DEFAULT_PANEL_ORDER)),
             "fps": self._sanitize_fps(data.get("fps", 20)),
-            "append_newline": bool(data.get("append_newline", False)),
+            "append_newline": bool(data.get("append_newline", True)),
+            "append_newline_explicit": True,
         }
         self._write_json(self.panel_path, payload)
         return payload
@@ -95,7 +103,8 @@ class ConfigStore:
             "baudrate": 115200,
             "fps": 20,
             "is_sending": False,
-            "append_newline": False,
+            "append_newline": True,
+            "append_newline_explicit": False,
             "phase_invert_x": False,
             "phase_invert_y": False,
             "phase_invert_z": False,
@@ -124,8 +133,13 @@ class ConfigStore:
         merged["mode"] = self._sanitize_serial_mode(merged.get("mode", "Disabled"), default_mode="Disabled")
         merged["is_sending"] = merged["mode"] != "Disabled"
         merged["baudrate"] = self._sanitize_baudrate(merged.get("baudrate", 115200))
-        merged["append_newline"] = bool(merged.get("append_newline", False))
+        merged["append_newline"] = bool(merged.get("append_newline", True))
+        merged["append_newline_explicit"] = bool(merged.get("append_newline_explicit", False))
         merged["fps"] = self._sanitize_fps(merged.get("fps", 20))
+        if not merged["append_newline_explicit"]:
+            merged["append_newline"] = True
+            merged["append_newline_explicit"] = True
+            self._write_json(self.motion_path, merged)
         return merged
 
     def save_motion_config(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -135,7 +149,8 @@ class ConfigStore:
             "baudrate": 115200,
             "fps": 20,
             "is_sending": False,
-            "append_newline": False,
+            "append_newline": True,
+            "append_newline_explicit": False,
             "phase_invert_x": False,
             "phase_invert_y": False,
             "phase_invert_z": False,
@@ -152,7 +167,8 @@ class ConfigStore:
         current["mode"] = self._sanitize_serial_mode(current.get("mode", "Disabled"), default_mode="Disabled")
         current["is_sending"] = current["mode"] != "Disabled"
         current["baudrate"] = self._sanitize_baudrate(current.get("baudrate", 115200))
-        current["append_newline"] = bool(current.get("append_newline", False))
+        current["append_newline"] = bool(current.get("append_newline", True))
+        current["append_newline_explicit"] = True
         current["fps"] = self._sanitize_fps(current.get("fps", 20))
         self._write_json(self.motion_path, current)
         return current

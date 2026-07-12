@@ -92,10 +92,11 @@ class PanelSender(_SerialPortMixin):
             self._set_error(f"Porta {port} nao encontrada.")
             self._close_serial()
             return
-        packet = self._build_packet(values, bool(config.get("append_newline", False)))
+        packet = self._build_packet(values, bool(config.get("append_newline", True)))
         try:
             conn = self._ensure_serial(port, int(config.get("baudrate", 115200)))
-            conn.write(packet.encode("utf-8"))
+            conn.write(self._encode_packet(packet))
+        #    print(f"[Painel serial] {packet.rstrip()}",port)
             self._print_first_packet(packet)
             self._packets_sent += 1
             self._last_success_at = time.time()
@@ -121,17 +122,23 @@ class PanelSender(_SerialPortMixin):
         for field_key in config["order"]:
             field = PANEL_FIELDS_BY_KEY[field_key]
             value = telemetry.get(field_key, fallback_overrides.get(field_key, field.default))
-            values.append(self._normalize(value))
+            values.append(self._normalize_panel_value(value))
         return values
 
-    def _normalize(self, value: Any) -> Any:
+    def _normalize_panel_value(self, value: Any) -> int:
+        return self._to_wire_int(value)
+
+    def _to_wire_int(self, value: Any) -> int:
         if isinstance(value, bool):
             return 1 if value else 0
         if value is None:
             return 0
-        if isinstance(value, float):
-            return round(value, 3)
-        return value
+        if isinstance(value, (int, float)):
+            return int(round(float(value)))
+        try:
+            return int(round(float(str(value).strip().replace(",", "."))))
+        except Exception:
+            return 0
 
     def status(self, is_collecting: bool) -> dict[str, Any]:
         config = self.store.load_panel_config()
@@ -226,8 +233,7 @@ class PanelSender(_SerialPortMixin):
         self._printed_first_packet = True
 
     def _build_packet(self, values: list[Any], append_newline: bool) -> str:
-        packet = ",".join(map(str, values))
-        return packet + ("\n" if append_newline else "")
+        return self._compose_packet(",".join(map(str, values)), append_newline)
 
     def _write_packet(self, config: dict[str, Any], payload: str) -> None:
         port = config.get("port")
@@ -236,18 +242,28 @@ class PanelSender(_SerialPortMixin):
         if port not in self.list_ports():
             self._close_serial()
             raise RuntimeError(f"Porta {port} nao encontrada.")
-        packet = payload + ("\n" if bool(config.get("append_newline", False)) else "")
+        packet = self._compose_packet(payload, bool(config.get("append_newline", True)))
         try:
             conn = self._ensure_serial(port, int(config.get("baudrate", 115200)))
-            conn.write(packet.encode("utf-8"))
+            conn.write(self._encode_packet(packet))
             self._print_first_packet(packet)
             self._packets_sent += 1
             self._last_success_at = time.time()
             self._last_error = ""
+        except UnicodeEncodeError as exc:
+            self._set_error(str(exc))
+            raise RuntimeError("O comando manual precisa usar somente caracteres ASCII simples para o Arduino.") from exc
         except Exception as exc:
             self._close_serial()
             self._set_error(str(exc))
             raise
+
+    def _compose_packet(self, payload: str, append_newline: bool) -> str:
+        packet = str(payload).rstrip("\r\n")
+        return packet + ("\n" if append_newline else "")
+
+    def _encode_packet(self, payload: str) -> bytes:
+        return payload.encode("ascii")
 
 
 class MotionSender(_SerialPortMixin):
@@ -289,10 +305,13 @@ class MotionSender(_SerialPortMixin):
             self._close_serial()
             return
         x, y, z = self._normalize_axes(telemetry, config)
-        packet = ",".join((str(x), str(y), str(z))) + ("\n" if bool(config.get("append_newline", False)) else "")
+        packet = self._compose_packet(
+            ",".join((str(self._to_wire_int(x)), str(self._to_wire_int(y)), str(self._to_wire_int(z)))),
+            bool(config.get("append_newline", True)),
+        )
         try:
             conn = self._ensure_serial(port, int(config["baudrate"]))
-            conn.write(packet.encode("utf-8"))
+            conn.write(self._encode_packet(packet))
             self._print_first_packet(packet)
             self._packets_sent += 1
             self._last_success_at = time.time()
@@ -314,14 +333,17 @@ class MotionSender(_SerialPortMixin):
         if port not in self.list_ports():
             self._close_serial()
             raise RuntimeError(f"Porta {port} nao encontrada.")
-        packet = text + ("\n" if bool(config.get("append_newline", False)) else "")
+        packet = self._compose_packet(text, bool(config.get("append_newline", True)))
         try:
             conn = self._ensure_serial(port, int(config["baudrate"]))
-            conn.write(packet.encode("utf-8"))
+            conn.write(self._encode_packet(packet))
             self._print_first_packet(packet)
             self._packets_sent += 1
             self._last_success_at = time.time()
             self._last_error = ""
+        except UnicodeEncodeError as exc:
+            self._set_error(str(exc))
+            raise RuntimeError("O comando manual precisa usar somente caracteres ASCII simples para o motion/Arduino.") from exc
         except Exception as exc:
             self._close_serial()
             self._set_error(str(exc))
@@ -445,6 +467,13 @@ class MotionSender(_SerialPortMixin):
         print(f"[Motion serial] {packet.rstrip()}")
         self._printed_first_packet = True
 
+    def _compose_packet(self, payload: str, append_newline: bool) -> str:
+        packet = str(payload).rstrip("\r\n")
+        return packet + ("\n" if append_newline else "")
+
+    def _encode_packet(self, payload: str) -> bytes:
+        return payload.encode("ascii")
+
     def _can_dispatch(self, fps: float) -> bool:
         now = time.perf_counter()
         interval = 1.0 / max(fps, 1.0)
@@ -452,6 +481,18 @@ class MotionSender(_SerialPortMixin):
             return False
         self._last_dispatch_at = now
         return True
+
+    def _to_wire_int(self, value: Any) -> int:
+        if isinstance(value, bool):
+            return 1 if value else 0
+        if value is None:
+            return 0
+        if isinstance(value, (int, float)):
+            return int(round(float(value)))
+        try:
+            return int(round(float(str(value).strip().replace(",", "."))))
+        except Exception:
+            return 0
 
 
 def build_telemetry_rows(telemetry: dict[str, Any], allowed_keys: list[str] | None = None) -> list[dict[str, Any]]:

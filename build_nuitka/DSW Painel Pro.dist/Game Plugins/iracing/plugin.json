@@ -1,0 +1,74 @@
+{
+  "id": "iracing",
+  "name": "iRacing",
+  "icon": "icon.png",
+  "requires_install": false,
+  "activity_source": "telemetry",
+  "process_name": "iRacingSim64DX11.exe",
+  "process_names": [
+    "iRacingSim64DX11.exe",
+    "iRacingSim64DX11",
+    "iRacingUI.exe"
+  ],
+  "telemetry_script": "telemetry.py",
+  "emitted_fields": [
+    "engine_rpm",
+    "current_gear",
+    "speed",
+    "water_temperature",
+    "fuel_percent",
+    "clutch",
+    "brake",
+    "throttle",
+    "connected"
+  ],
+  "available_extra_fields": [
+    "connected",
+    "sdk_available",
+    "engine_enabled",
+    "electric_enabled",
+    "park_brake",
+    "acceleration_x",
+    "acceleration_y",
+    "acceleration_z",
+    "oil_temperature",
+    "oil_pressure",
+    "lap_number",
+    "best_lap_time",
+    "last_lap_time",
+    "current_lap_time",
+    "race_position"
+  ],
+  "emitted_units": {
+    "speed": "M/S",
+    "pressure": "PSI",
+    "temperature": "Celsius"
+  },
+  "preferred_units": {
+    "speed": "KM/H",
+    "pressure": "BAR",
+    "temperature": "Celsius"
+  },
+  "installer": {
+    "method": "tutorial_only",
+    "title": "Telemetria iRacing",
+    "description": "O plugin le a telemetria do iRacing pela camada de SDK instalada no computador.",
+    "success_message": "iRacing nao precisa de arquivos copiados pelo DSW."
+  },
+  "telemetry": {
+    "protocol": "SharedMemory"
+  },
+  "setup_tutorial": {
+    "title": "Configuracao da telemetria do iRacing",
+    "summary": "Abra o simulador normalmente. O DSW tenta ler a telemetria pela camada de SDK disponível no Windows.",
+    "steps": [
+      "Abra o iRacing e entre em uma sessao com o carro carregado.",
+      "Deixe o jogo na pista, nao apenas no menu ou launcher.",
+      "No DSW, selecione iRacing e inicie a coleta."
+    ],
+    "notes": [
+      "Este plugin depende da camada de leitura do SDK do iRacing estar acessivel no Windows e do modulo Python irsdk ou pyirsdk estar disponivel no ambiente do app.",
+      "Se o DSW ficar em aguardando telemetria, confirme que o simulador realmente entrou na sessao e nao esta apenas na interface."
+    ]
+  }
+}
