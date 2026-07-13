@@ -35,6 +35,7 @@ try:
     from .plugin_registry import PluginRegistry
     from .runtime_paths import get_app_base_dir
     from .serial_services import MotionSender, PanelSender, build_telemetry_rows
+    from .telemetry_shared_memory import TelemetrySharedMemoryService
     from .web_runtime import WebRuntimeService
 except ImportError:  # pragma: no cover
     from adjacent_devices import AdjacentDevicesManager
@@ -44,6 +45,7 @@ except ImportError:  # pragma: no cover
     from plugin_registry import PluginRegistry
     from runtime_paths import get_app_base_dir
     from serial_services import MotionSender, PanelSender, build_telemetry_rows
+    from telemetry_shared_memory import TelemetrySharedMemoryService
     from web_runtime import WebRuntimeService
 
 
@@ -55,6 +57,7 @@ class TelemetryBridge:
         self.panel_sender = PanelSender(self.store)
         self.motion_sender = MotionSender(self.store)
         self.adjacent_devices = AdjacentDevicesManager(self.store)
+        self.telemetry_share = TelemetrySharedMemoryService()
         self.installer = InstallerService(self.base_dir, self.registry)
         self.web_runtime = WebRuntimeService(self.store, self.api_payload)
         self.plugins = self.registry.load_plugins()
@@ -153,6 +156,7 @@ class TelemetryBridge:
             "motion_preview": self.motion_sender.preview(telemetry),
             "basic_settings": settings,
             "adjacent_device_presets": self.adjacent_devices.preset_catalog(),
+            "adjacent_device_encodings": self.adjacent_devices.encoding_catalog(),
             "available_ports": self.panel_sender.list_ports(),
             "device_status": {
                 "panel": panel_status,
@@ -197,6 +201,7 @@ class TelemetryBridge:
                 ),
             },
             "web_server": self.web_runtime.status(),
+            "telemetry_share": self.telemetry_share.status(),
         }
 
     def api_payload(self) -> dict[str, Any]:
@@ -436,6 +441,17 @@ class TelemetryBridge:
         self.web_runtime.save_config(data)
         return self.snapshot()
 
+    def preview_adjacent_device(self, config: dict[str, Any]) -> dict[str, Any]:
+        slot_index = max(0, min(int(config.get("slot", 1)) - 1, 3))
+        telemetry = self._latest_telemetry_for_preview()
+        with self._lock:
+            selected_game = self._selected_game
+            is_collecting = self._is_collecting
+        preview = self.adjacent_devices.preview_config(slot_index, config, telemetry)
+        preview["selected_game"] = selected_game
+        preview["telemetry_source"] = "live" if is_collecting and telemetry else "cache"
+        return preview
+
     def ensure_background_services_started(self) -> dict[str, Any]:
         config = self.store.load_settings().get("web_server", {})
         if config.get("http_auto_start"):
@@ -651,6 +667,7 @@ class TelemetryBridge:
         self.panel_sender.shutdown()
         self.motion_sender.shutdown()
         self.adjacent_devices.shutdown()
+        self.telemetry_share.shutdown()
         try:
             self.web_runtime.stop_http()
         except Exception:
@@ -713,6 +730,7 @@ class TelemetryBridge:
                         self.motion_sender.send(telemetry)
                         self.panel_sender.send(telemetry)
                         self.adjacent_devices.send(telemetry, True)
+                        self._publish_shared_telemetry(telemetry)
                     else:
                         listener_error = str(telemetry.get("_listener_error", "") or "")
                         listener_event = str(telemetry.get("_listener_event", "") or "")
@@ -731,10 +749,12 @@ class TelemetryBridge:
                             self.motion_sender.send(self._last_active_telemetry)
                             self.panel_sender.send(self._last_active_telemetry)
                             self.adjacent_devices.send(self._last_active_telemetry, True)
+                            self._publish_shared_telemetry(self._last_active_telemetry)
                         else:
                             self.motion_sender.send_defaults()
                             self.panel_sender.send_defaults()
                             self.adjacent_devices.send({}, False)
+                            self._publish_shared_telemetry({})
                     time.sleep(0.02)
                 except Exception as exc:
                     self._set_error(f"Erro ao coletar telemetria: {exc}")
@@ -743,6 +763,7 @@ class TelemetryBridge:
                         break
                     time.sleep(0.08)
         finally:
+            self._publish_shared_telemetry({})
             self._set_status("Parado")
 
     def _status_for_game(self, game_name: str) -> str:
@@ -1058,3 +1079,25 @@ class TelemetryBridge:
             return about_path.read_text(encoding="utf-8")
         except OSError:
             return ""
+
+    def _latest_telemetry_for_preview(self) -> dict[str, Any]:
+        with self._lock:
+            if self._telemetry:
+                return dict(self._telemetry)
+            if self._last_active_telemetry:
+                return dict(self._last_active_telemetry)
+        return {}
+
+    def _publish_shared_telemetry(self, telemetry: dict[str, Any]) -> None:
+        with self._lock:
+            selected_game = self._selected_game
+            is_collecting = self._is_collecting
+            status_text = self._status_text
+        payload = {
+            "selected_game": selected_game,
+            "is_collecting": is_collecting,
+            "status_text": status_text,
+            "telemetry": dict(telemetry),
+            "updated_at": time.time(),
+        }
+        self.telemetry_share.publish(payload)

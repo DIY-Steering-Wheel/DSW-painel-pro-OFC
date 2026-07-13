@@ -184,6 +184,9 @@ class NewAppApi:
     def uninstall_selected_game_modal(self) -> dict[str, Any]:
         return self.bridge.uninstall_selected_game()
 
+    def preview_adjacent_device(self, config: dict[str, Any]) -> dict[str, Any]:
+        return self.bridge.preview_adjacent_device(config)
+
     def open_external_url(self, url: str) -> bool:
         parsed = urlparse(url or "")
         if parsed.scheme not in {"http", "https"}:

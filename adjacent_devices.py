@@ -88,6 +88,14 @@ ADJACENT_DEVICE_PRESETS: tuple[dict[str, str], ...] = (
     },
 )
 
+SUPPORTED_SERIAL_ENCODINGS: tuple[dict[str, str], ...] = (
+    {"id": "ascii", "label": "ASCII"},
+    {"id": "utf-8", "label": "UTF-8"},
+    {"id": "latin-1", "label": "Latin-1"},
+    {"id": "cp1252", "label": "Windows-1252"},
+    {"id": "utf-16le", "label": "UTF-16 LE"},
+)
+
 
 def build_default_adjacent_devices() -> list[dict[str, Any]]:
     return [
@@ -99,6 +107,7 @@ def build_default_adjacent_devices() -> list[dict[str, Any]]:
             "baudrate": 115200,
             "fps": 20,
             "append_newline": True,
+            "encoding": "ascii",
             "preset_id": "wind_sim",
             "script": WIND_SIM_SCRIPT,
         },
@@ -110,6 +119,7 @@ def build_default_adjacent_devices() -> list[dict[str, Any]]:
             "baudrate": 115200,
             "fps": 20,
             "append_newline": True,
+            "encoding": "ascii",
             "preset_id": "clutch_vibrator",
             "script": CLUTCH_VIBRATION_SCRIPT,
         },
@@ -121,6 +131,7 @@ def build_default_adjacent_devices() -> list[dict[str, Any]]:
             "baudrate": 115200,
             "fps": 20,
             "append_newline": True,
+            "encoding": "ascii",
             "preset_id": "brake_abs",
             "script": BRAKE_ABS_SCRIPT,
         },
@@ -132,6 +143,7 @@ def build_default_adjacent_devices() -> list[dict[str, Any]]:
             "baudrate": 115200,
             "fps": 20,
             "append_newline": True,
+            "encoding": "ascii",
             "preset_id": "custom",
             "script": BLANK_SCRIPT,
         },
@@ -161,6 +173,9 @@ class AdjacentDevicesManager:
     def preset_catalog(self) -> list[dict[str, str]]:
         return [dict(item) for item in ADJACENT_DEVICE_PRESETS]
 
+    def encoding_catalog(self) -> list[dict[str, str]]:
+        return [dict(item) for item in SUPPORTED_SERIAL_ENCODINGS]
+
     def list_ports(self) -> list[str]:
         if serial is None:
             return []
@@ -182,6 +197,65 @@ class AdjacentDevicesManager:
             if not script:
                 raise RuntimeError(f"Dispositivo adjacente {index}: o script Lua nao pode ficar vazio quando o envio estiver ligado.")
             self._compile_script(index - 1, script)
+
+    def preview_config(self, slot_index: int, config: dict[str, Any], telemetry: dict[str, Any]) -> dict[str, Any]:
+        slot_number = slot_index + 1
+        script = str(config.get("script", "") or "").strip()
+        append_newline = bool(config.get("append_newline", True))
+        encoding = self._normalize_encoding(config.get("encoding", "ascii"))
+        telemetry_items = [
+            {"key": str(key), "value": telemetry.get(key)}
+            for key in sorted(telemetry)[:16]
+        ]
+
+        if LuaRuntime is None:
+            return {
+                "slot": slot_number,
+                "ok": False,
+                "status": "lua_unavailable",
+                "output": "",
+                "packet": "",
+                "encoding": encoding,
+                "error": "Runtime Lua indisponivel no build atual.",
+                "telemetry_items": telemetry_items,
+            }
+        if not script:
+            return {
+                "slot": slot_number,
+                "ok": False,
+                "status": "empty",
+                "output": "",
+                "packet": "",
+                "encoding": encoding,
+                "error": "Digite um script Lua para gerar o preview.",
+                "telemetry_items": telemetry_items,
+            }
+
+        try:
+            runner = self._compile_script(slot_index, script)
+            output = self._normalize_exit_value(runner(self._build_lua_env(slot_index, telemetry)))
+            packet = self._compose_packet(output, append_newline) if output else ""
+            return {
+                "slot": slot_number,
+                "ok": True,
+                "status": "ok",
+                "output": output,
+                "packet": packet,
+                "encoding": encoding,
+                "error": "",
+                "telemetry_items": telemetry_items,
+            }
+        except Exception as exc:
+            return {
+                "slot": slot_number,
+                "ok": False,
+                "status": "compile_error",
+                "output": "",
+                "packet": "",
+                "encoding": encoding,
+                "error": str(exc),
+                "telemetry_items": telemetry_items,
+            }
 
     def send(self, telemetry: dict[str, Any], is_collecting: bool) -> None:
         configs = self.store.load_settings().get("adjacent_devices", [])
@@ -215,12 +289,25 @@ class AdjacentDevicesManager:
             state = self._slot_state[slot_index]
             port = config.get("port")
             enabled = bool(config.get("enabled", False))
+            script = str(config.get("script", "") or "").strip()
+            script_error = ""
+            if LuaRuntime is not None and script:
+                try:
+                    self._compile_script(slot_index, script)
+                except Exception as exc:
+                    script_error = str(exc)
             if LuaRuntime is None:
                 status_name = "lua_unavailable"
                 message = "Runtime Lua indisponivel."
             elif serial is None:
                 status_name = "serial_unavailable"
                 message = "PySerial nao esta disponivel."
+            elif enabled and not script:
+                status_name = "error"
+                message = "Script Lua vazio."
+            elif enabled and script_error:
+                status_name = "error"
+                message = f"Erro no script Lua: {script_error}"
             elif not port:
                 status_name = "not_configured"
                 message = "Nenhuma porta serial configurada."
@@ -259,6 +346,9 @@ class AdjacentDevicesManager:
                     "message": message,
                     "baudrate": int(config.get("baudrate", 115200) or 115200),
                     "mode": "Lua",
+                    "encoding": self._normalize_encoding(config.get("encoding", "ascii")),
+                    "script_ok": not bool(script_error) and bool(script),
+                    "script_error": script_error,
                     "packets_sent": state["packets_sent"],
                     "last_success_at": self._format_timestamp(state["last_success_at"]),
                     "last_error_at": self._format_timestamp(state["last_error_at"]),
@@ -302,16 +392,17 @@ class AdjacentDevicesManager:
             self._close_slot(slot_index)
             raise RuntimeError(f"Porta {port} nao encontrada.")
         packet = self._compose_packet(payload, bool(config.get("append_newline", True)))
+        encoding = self._normalize_encoding(config.get("encoding", "ascii"))
         try:
             conn = self._ensure_serial(slot_index, port, int(config.get("baudrate", 115200)))
-            conn.write(packet.encode("ascii"))
+            conn.write(packet.encode(encoding))
             state = self._slot_state[slot_index]
             state["packets_sent"] += 1
             state["last_success_at"] = time.time()
             state["last_error"] = ""
         except UnicodeEncodeError as exc:
             self._set_error(slot_index, str(exc))
-            raise RuntimeError("O script Lua precisa gerar somente caracteres ASCII simples para o dispositivo adjacente.") from exc
+            raise RuntimeError(f"O payload nao pode ser convertido usando o encoder {encoding}.") from exc
         except Exception as exc:
             self._close_slot(slot_index)
             self._set_error(slot_index, str(exc))
@@ -445,3 +536,8 @@ class AdjacentDevicesManager:
             return float(value)
         except Exception:
             return 0.0
+
+    def _normalize_encoding(self, value: Any) -> str:
+        encoding = str(value or "ascii").strip().lower()
+        supported = {item["id"] for item in SUPPORTED_SERIAL_ENCODINGS}
+        return encoding if encoding in supported else "ascii"

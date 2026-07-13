@@ -1,0 +1,91 @@
+{
+  "id": "my-summer-car",
+  "name": "My Summer Car",
+  "icon": "icon.png",
+  "requires_install": true,
+  "activity_source": "telemetry",
+  "process_name": "mysummercar.exe",
+  "process_names": [
+    "mysummercar.exe",
+    "MySummerCar.exe"
+  ],
+  "telemetry_script": "telemetry.py",
+  "installer_script": "installer.py",
+  "emitted_fields": [
+    "engine_rpm",
+    "current_gear",
+    "speed",
+    "water_temperature",
+    "electric_enabled",
+    "engine_enabled",
+    "fuel_percent",
+    "clutch",
+    "brake",
+    "throttle"
+  ],
+  "available_extra_fields": [
+    "connected",
+    "oil_temperature",
+    "oil_pressure",
+    "battery_voltage_warning",
+    "park_brake",
+    "lights_parking",
+    "lights_low_beam",
+    "lights_high_beam",
+    "blinker_left_active",
+    "blinker_right_active",
+    "traction_control",
+    "abs",
+    "acceleration_x",
+    "acceleration_y",
+    "acceleration_z",
+    "raw_speed",
+    "raw_gear",
+    "socket_error",
+    "last_client",
+    "last_raw_message"
+  ],
+  "emitted_units": {
+    "speed": "KM/H",
+    "pressure": "BAR",
+    "temperature": "Celsius"
+  },
+  "preferred_units": {
+    "speed": "KM/H",
+    "pressure": "BAR",
+    "temperature": "Celsius"
+  },
+  "installer": {
+    "method": "folder_required",
+    "allow_auto_search": false,
+    "allow_manual_select": true,
+    "title": "Instalar mod My Summer Car",
+    "description": "Selecione a pasta Mods do My Summer Car. O DSW copia o VehicleTelemetry.dll para Mods e o WebSocketSharp.dll para Mods/References.",
+    "success_message": "Arquivos do My Summer Car instalados com sucesso."
+  },
+  "telemetry": {
+    "protocol": "WebSocket",
+    "url": "ws://127.0.0.1:2609"
+  },
+  "setup_tutorial": {
+    "title": "Configuracao da telemetria do My Summer Car",
+    "summary": "Instale primeiro o MSC Loader. Depois selecione a pasta Mods do jogo para o DSW copiar o DLL principal e a dependencia para References. O proprio DSW sobe o servidor WebSocket local esperado pelo mod.",
+    "steps": [
+      "Instale primeiro o MSC Loader no jogo. Ele e necessario para carregar mods em DLL.",
+      "Abra o instalador do DSW para My Summer Car.",
+      "Selecione manualmente a pasta Mods do My Summer Car.",
+      "Clique em instalar para copiar VehicleTelemetry.dll para Mods e WebSocketSharp.dll para Mods/References.",
+      "No DSW, selecione My Summer Car e inicie a coleta para abrir o servidor WebSocket local na porta 2609.",
+      "Abra o jogo com o mod instalado.",
+      "Use `vt_connect` no console do MSC Loader se o mod nao conectar sozinho ao servidor local do DSW.",
+      "No DSW, selecione My Summer Car e inicie a coleta.",
+      "Se o jogo ja estiver aberto, o DSW pode ficar em aguardando telemetria ate o mod comecar a enviar dados."
+    ],
+    "notes": [
+      "Este plugin depende de um loader de mods para DLL. Sem o MSC Loader a DLL nao sera carregada pelo jogo.",
+      "O plugin converte a marcha para o padrao do DSW: re = -1, neutro = 0, primeira = 1 em diante.",
+      "Se nada chegar, confira firewall, se a porta 2609 esta livre, se o mod foi instalado corretamente e se o comando vt_connect conectou no DSW.",
+      "O DSW nao depende do EXE do jogo para iniciar a coleta desse plugin; a validacao real e pela telemetria recebida."
+    ]
+  }
+}

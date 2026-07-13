@@ -415,6 +415,7 @@ class ConfigStore:
             current["baudrate"] = self._sanitize_baudrate(current.get("baudrate", 115200))
             current["fps"] = self._sanitize_fps(current.get("fps", 20))
             current["append_newline"] = bool(current.get("append_newline", True))
+            current["encoding"] = self._sanitize_adjacent_encoding(current.get("encoding", "ascii"))
             current["preset_id"] = str(current.get("preset_id", defaults[index]["preset_id"]) or "custom").strip() or "custom"
             script = str(current.get("script", defaults[index]["script"]) or "")
             current["script"] = script.replace("\r\n", "\n").replace("\r", "\n")
@@ -459,3 +460,9 @@ class ConfigStore:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    def _sanitize_adjacent_encoding(self, value: Any) -> str:
+        encoding = str(value or "ascii").strip().lower()
+        if encoding in {"ascii", "utf-8", "latin-1", "cp1252", "utf-16le"}:
+            return encoding
+        return "ascii"

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Neon Cluster</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="cockpit-shell">
+    <section class="visor-card">
+      <div class="visor-copy">
+        <p class="eyebrow">DSW Cockpit Vision</p>
+        <h1 id="gameName">Aguardando jogo</h1>
+        <p id="gameState">Sem coleta ativa</p>
+      </div>
+      <div class="visor-actions">
+        <div id="collectChip" class="collect-chip">OFFLINE</div>
+        <button id="openSettings" class="settings-button" type="button">Shift Light</button>
+      </div>
+    </section>
+
+    <section class="instrument-bay">
+      <article class="speed-dial panel-card">
+        <span class="mini-label">Velocidade</span>
+        <div class="speed-stack">
+          <strong id="speedValue">0</strong>
+          <span class="speed-unit">KM/H</span>
+        </div>
+        <div class="dial-scale">
+          <span>0</span>
+          <span>120</span>
+          <span>240</span>
+          <span>360</span>
+        </div>
+        <div class="bar-track">
+          <div id="speedBar" class="bar-fill cyan"></div>
+        </div>
+      </article>
+
+      <article class="center-cluster panel-card">
+        <div class="cluster-topline">
+          <div>
+            <span class="mini-label">Marcha</span>
+            <strong id="gearValue" class="gear-value">N</strong>
+          </div>
+          <div class="cluster-meta">
+            <span id="lapValue" class="subvalue">Lap 0</span>
+            <span id="positionValue" class="subvalue">Pos 0</span>
+          </div>
+        </div>
+
+        <div class="rpm-module">
+          <div class="rpm-head">
+            <span class="mini-label">RPM</span>
+            <strong id="rpmValue">0</strong>
+          </div>
+          <div id="shiftLite" class="shift-lite" aria-label="Shift light"></div>
+          <div class="bar-track tach-track">
+            <div id="rpmBar" class="bar-fill magenta"></div>
+          </div>
+          <p id="shiftLiteSummary" class="shift-summary">Ativo de 6500 ate 8500 RPM</p>
+        </div>
+
+        <div class="telltale-grid">
+          <div id="signalEngine" class="signal-pill">ENGINE</div>
+          <div id="signalLights" class="signal-pill">LIGHTS</div>
+          <div id="signalBrake" class="signal-pill">BRAKE</div>
+          <div id="signalCruise" class="signal-pill">CRUISE</div>
+          <div id="signalLeft" class="signal-pill">LEFT</div>
+          <div id="signalRight" class="signal-pill">RIGHT</div>
+        </div>
+      </article>
+
+      <article class="aux-stack">
+        <div class="status-card panel-card">
+          <span class="mini-label">Temperatura</span>
+          <strong id="tempValue">0</strong>
+        </div>
+        <div class="status-card panel-card">
+          <span class="mini-label">Combustivel</span>
+          <strong id="fuelValue">0%</strong>
+        </div>
+        <div class="status-card panel-card">
+          <span class="mini-label">Turbo</span>
+          <strong id="turboValue">0</strong>
+        </div>
+      </article>
+    </section>
+
+    <section class="pedals-card panel-card">
+      <div class="pedal-row">
+        <div class="pedal-head"><span>Acelerador</span><strong id="throttleValue">0%</strong></div>
+        <div class="bar-track small"><div id="throttleBar" class="bar-fill lime"></div></div>
+      </div>
+      <div class="pedal-row">
+        <div class="pedal-head"><span>Freio</span><strong id="brakeValue">0%</strong></div>
+        <div class="bar-track small"><div id="brakeBar" class="bar-fill red"></div></div>
+      </div>
+      <div class="pedal-row">
+        <div class="pedal-head"><span>Embreagem</span><strong id="clutchValue">0%</strong></div>
+        <div class="bar-track small"><div id="clutchBar" class="bar-fill blue"></div></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="settingsModal" class="modal-shell" hidden>
+    <div id="modalBackdrop" class="modal-backdrop"></div>
+    <section class="modal-card" aria-modal="true" role="dialog" aria-labelledby="settingsTitle">
+      <div class="modal-head">
+        <div>
+          <p class="eyebrow">Configuracao do painel</p>
+          <h2 id="settingsTitle">Shift Light</h2>
+        </div>
+        <button id="closeSettings" class="close-button" type="button" aria-label="Fechar">Fechar</button>
+      </div>
+
+      <div class="modal-copy">
+        <p>Os ajustes ficam fora do cluster principal para manter o painel com cara de veiculo real.</p>
+      </div>
+
+      <div class="modal-grid">
+        <label class="field-toggle">
+          <span>Ativar shift light</span>
+          <input id="shiftLiteEnabled" type="checkbox">
+        </label>
+        <label class="field-input">
+          <span>Acender em</span>
+          <input id="shiftLiteStart" type="number" min="1000" max="30000" step="50" value="6500">
+        </label>
+        <label class="field-input">
+          <span>Corte em</span>
+          <input id="shiftLiteEnd" type="number" min="1000" max="30000" step="50" value="8500">
+        </label>
+      </div>
+    </section>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

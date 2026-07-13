@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import sys
 import time
+import traceback
+from pathlib import Path
 
 import webview
 
@@ -41,6 +44,10 @@ def run() -> None:
         window.events.closing += api.shutdown
         window.events.closed += api.shutdown
         webview.start(_bootstrap_windows_ui, args=(window,), debug=False)
+    except Exception as exc:
+        log_path = _write_startup_failure(exc)
+        _show_startup_failure_message(log_path)
+        raise
     finally:
         _release_single_instance()
 
@@ -133,6 +140,27 @@ def _show_already_running_message() -> None:
         )
     except Exception:
         print("DSW Painel Pro ja esta rodando.", file=sys.stderr)
+
+
+def _write_startup_failure(exc: Exception) -> str:
+    appdata = Path(os.getenv("APPDATA", ".")) / "DSW Painel Pro"
+    appdata.mkdir(parents=True, exist_ok=True)
+    log_path = appdata / "startup_error.log"
+    details = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    log_path.write_text(details, encoding="utf-8")
+    return str(log_path)
+
+
+def _show_startup_failure_message(log_path: str) -> None:
+    text = (
+        "Falha ao iniciar a interface do DSW Painel Pro.\n\n"
+        "Verifique se o WebView2 do Windows esta instalado e se o build foi copiado por completo.\n"
+        f"Log salvo em:\n{log_path}"
+    )
+    try:
+        ctypes.windll.user32.MessageBoxW(0, text, "Erro ao iniciar DSW Painel Pro", 0x00000010)
+    except Exception:
+        print(text, file=sys.stderr)
 
 
 if __name__ == "__main__":
