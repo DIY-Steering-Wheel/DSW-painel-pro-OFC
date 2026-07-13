@@ -23,6 +23,7 @@ let activeAdjacentEditorIndex = null;
 let adjacentPreviewState = null;
 let adjacentPreviewTimer = null;
 let luaContextMenuState = null;
+let appBootStarted = false;
 const MAIN_POLL_MS = 250;
 
 // Sistema de logging com timestamp
@@ -33,11 +34,37 @@ const logWithTime = (message, data) => {
   console.log(`[${now}] ${message}`, data !== undefined ? data : "");
 };
 
-window.addEventListener("pywebviewready", async () => {
+async function initializeApp() {
+  if (appBootStarted) {
+    return;
+  }
+  if (!window.pywebview?.api?.bootstrap) {
+    return;
+  }
+  appBootStarted = true;
   bindUi();
-  state = await window.pywebview.api.bootstrap();
-  render();
-  startPolling();
+  try {
+    state = await window.pywebview.api.bootstrap();
+    render();
+    startPolling();
+  } catch (error) {
+    console.error("Falha ao iniciar app:", error);
+    if (ui.gameTitle) {
+      ui.gameTitle.textContent = "Erro ao iniciar";
+    }
+    if (ui.gameState) {
+      ui.gameState.textContent = error?.message || "Falha ao carregar a interface.";
+    }
+    if (ui.gamesList) {
+      ui.gamesList.innerHTML = `<div class="fallback-item"><div><strong>Falha ao carregar os jogos</strong><span>${escapeHtml(error?.message || "Verifique o build compilado.")}</span></div></div>`;
+    }
+  }
+}
+
+window.addEventListener("pywebviewready", initializeApp);
+window.addEventListener("DOMContentLoaded", () => {
+  setTimeout(initializeApp, 80);
+  setTimeout(initializeApp, 400);
 });
 
 function startPolling() {

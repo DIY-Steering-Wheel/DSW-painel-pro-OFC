@@ -74,6 +74,8 @@ def main() -> int:
 
     source_dist_dir = OUTPUT_DIR / "main.dist"
     dist_dir = OUTPUT_DIR / DIST_DIR_NAME
+    if source_dist_dir.exists():
+        _sync_runtime_plugin_sources(source_dist_dir)
     if source_dist_dir.exists() and source_dist_dir != dist_dir:
         final_dir = _finalize_dist_directory(source_dist_dir, dist_dir)
     else:
@@ -94,7 +96,14 @@ def _resolve_version_file_arg() -> str | None:
 
 def _finalize_dist_directory(source_dist_dir: Path, dist_dir: Path) -> Path:
     if dist_dir.exists():
-        shutil.rmtree(dist_dir)
+        try:
+            shutil.rmtree(dist_dir)
+        except PermissionError:
+            print(
+                "Aviso: a pasta dist anterior esta em uso e nao pode ser substituida agora. "
+                f"Usando '{source_dist_dir.name}' como pasta final."
+            )
+            return source_dist_dir
     for _ in range(5):
         try:
             source_dist_dir.rename(dist_dir)
@@ -110,6 +119,14 @@ def _finalize_dist_directory(source_dist_dir: Path, dist_dir: Path) -> Path:
 
 def _module_exists(module_name: str) -> bool:
     return importlib.util.find_spec(module_name) is not None
+
+
+def _sync_runtime_plugin_sources(dist_dir: Path) -> None:
+    source_plugins_dir = BASE_DIR / "Game Plugins"
+    target_plugins_dir = dist_dir / "Game Plugins"
+    if not source_plugins_dir.exists():
+        return
+    shutil.copytree(source_plugins_dir, target_plugins_dir, dirs_exist_ok=True)
 
 
 if __name__ == "__main__":

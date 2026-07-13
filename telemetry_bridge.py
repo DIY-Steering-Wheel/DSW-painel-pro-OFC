@@ -72,6 +72,7 @@ class TelemetryBridge:
         self._thread: threading.Thread | None = None
         self._collector_module = None
         self._stop_event = threading.Event()
+        self._collector_session = 0
         self._selected_game = self._resolve_selected_game_name(self.store.load_selected_game(self.plugins[0]["name"]))
         self._save_selected_game_safe(self._selected_game)
         self._installed_games = self.store.load_games(list(self._plugin_by_name))
@@ -634,30 +635,39 @@ class TelemetryBridge:
         with self._lock:
             if self._is_collecting:
                 return
+            self._collector_session += 1
+            collector_session = self._collector_session
+            stop_event = threading.Event()
+            self._stop_event = stop_event
             self._is_collecting = True
             self._status_text = "Aguardando telemetria..."
             self._last_error = ""
-            self._stop_event.clear()
-        self._thread = threading.Thread(target=self._collector_loop, daemon=True)
+        self._thread = threading.Thread(
+            target=self._collector_loop,
+            args=(collector_session, stop_event),
+            daemon=True,
+        )
         self._thread.start()
 
     def stop_collection(self, wait: bool = False) -> None:
-        thread = self._thread
-        collector_module = self._collector_module
-        self._thread = None
         with self._lock:
+            thread = self._thread
+            collector_module = self._collector_module
+            stop_event = self._stop_event
+            self._collector_session += 1
+            self._thread = None
+            self._collector_module = None
             self._is_collecting = False
             self._status_text = "Parado"
             self._telemetry = {}
-        self._stop_event.set()
-        if wait and thread is not None and thread.is_alive() and thread is not threading.current_thread():
-            thread.join(timeout=1.0)
+        stop_event.set()
         if collector_module is not None and hasattr(collector_module, "shutdown"):
             try:
                 collector_module.shutdown()
             except Exception:
                 pass
-        self._collector_module = None
+        if wait and thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=1.5)
         self.adjacent_devices.shutdown()
         self.motion_sender.send_defaults(force=True)
         self.panel_sender.send_defaults(force=True)
@@ -705,7 +715,7 @@ class TelemetryBridge:
                 pass
         return names
 
-    def _collector_loop(self) -> None:
+    def _collector_loop(self, collector_session: int, stop_event: threading.Event) -> None:
         selected = self.snapshot()["selected_game"]
         plugin = self.plugin_meta(selected)
         collector_module = self.registry.load_module(plugin, "telemetry_script")
@@ -713,11 +723,16 @@ class TelemetryBridge:
             self._set_error("Jogo não suportado.")
             self.stop_collection()
             return
-        self._collector_module = collector_module
+        with self._lock:
+            if collector_session != self._collector_session:
+                return
+            self._collector_module = collector_module
         try:
-            while not self._stop_event.is_set():
+            while not stop_event.is_set():
                 try:
                     telemetry = collector_module.collect(self._collector_settings(plugin))
+                    if stop_event.is_set() or collector_session != self._collector_session:
+                        break
                     if self._telemetry_payload_is_active(plugin, telemetry):
                         telemetry = self._apply_merge_rules(plugin, telemetry)
                         telemetry = self._apply_equalization(plugin, telemetry)
@@ -758,13 +773,21 @@ class TelemetryBridge:
                     time.sleep(0.02)
                 except Exception as exc:
                     self._set_error(f"Erro ao coletar telemetria: {exc}")
+                    if stop_event.is_set() or collector_session != self._collector_session:
+                        break
                     if not self.is_game_active(selected):
                         self.stop_collection()
                         break
                     time.sleep(0.08)
         finally:
             self._publish_shared_telemetry({})
-            self._set_status("Parado")
+            with self._lock:
+                if collector_session == self._collector_session:
+                    self._collector_module = None
+                    self._thread = None
+                    self._is_collecting = False
+                    self._telemetry = {}
+                    self._status_text = "Parado"
 
     def _status_for_game(self, game_name: str) -> str:
         plugin = self.plugin_meta(game_name)
